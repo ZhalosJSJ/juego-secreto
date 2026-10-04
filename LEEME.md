@@ -16,6 +16,8 @@ La primera vez, Windows puede mostrar «Windows protegió su PC», porque el .ex
 2. Clic derecho en el ícono → **Instalar en este equipo**. Se copia a `%LOCALAPPDATA%\Programs\Escritorio`, aparece en el menú Inicio y en **Configuración → Aplicaciones** (desde ahí se desinstala). No pide permisos de administrador.
 3. Si quiere que arranque solo: **Iniciar con Windows**.
 
+**Actualizar:** abra el `Escritorio.exe` nuevo, nada más. Él cierra la copia que esté abierta, reemplaza la instalada, borra lo que sobre de la versión anterior y se vuelve a abrir desde la instalación (avisa con un globo). Si abre por error un `.exe` más viejo que el instalado, no lo degrada: abre el instalado. Para probar una compilación sin tocar la instalada: `Escritorio.exe --sin-actualizar`.
+
 ## El menú de la bandeja
 
 | Opción | Qué hace |

@@ -26,9 +26,21 @@ internal static class Rutas
         Directory.CreateDirectory(WidgetsPropios);
     }
 
-    /// <summary>Copia los widgets que vienen dentro del .exe (reloj, baterías) a su carpeta.</summary>
+    /// <summary>
+    /// Copia los widgets que vienen dentro del .exe (reloj, baterías, reproductor) a su carpeta.
+    /// Primero la vacía: así no quedan widgets de versiones anteriores.
+    /// </summary>
     public static void ExtraerIntegrados()
     {
+        try
+        {
+            if (Directory.Exists(Integrados))
+                Directory.Delete(Integrados, recursive: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            global::Escritorio.Registro.Error("No se pudo vaciar la carpeta de widgets integrados", error);
+        }
         var ensamblado = typeof(Rutas).Assembly;
         foreach (var recurso in ensamblado.GetManifestResourceNames())
         {

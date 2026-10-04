@@ -8,6 +8,8 @@ internal static class Program
     /// --desinstalar: lo usa Configuración → Aplicaciones.
     /// --reemplazar: espera a que se cierre la copia abierta (al instalarse) en lugar de avisar.
     /// --escritorio &lt;id&gt;: cambia de escritorio («libre» = ninguno). Si la app ya está abierta, se lo pide a esa copia.
+    /// --sin-actualizar: abre este .exe tal cual, sin reemplazar la copia instalada (para probar una compilación).
+    /// --actualizado &lt;versión&gt;: lo pasa la actualización a la copia instalada recién abierta, para que avise.
     /// </param>
     [STAThread]
     static int Main(string[] args)
@@ -15,6 +17,9 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         if (args.Contains("--desinstalar"))
             return Instalacion.Desinstalar();
+        // Un .exe nuevo reemplaza la versión instalada (y cierra la que esté abierta) antes de seguir.
+        if (Instalacion.ActualizarSiHaceFalta(args) is { } codigo)
+            return codigo;
 
         int indice = Array.IndexOf(args, "--escritorio");
         string? escritorioPedido = indice >= 0 && indice + 1 < args.Length ? args[indice + 1] : null;
@@ -30,9 +35,11 @@ internal static class Program
         }
         Application.ThreadException += (_, e) => Registro.Error("Error no controlado", e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Registro.Error("Error fatal", e.ExceptionObject as Exception);
+        int marca = Array.IndexOf(args, "--actualizado");
+        string? versionAnterior = marca >= 0 && marca + 1 < args.Length ? args[marca + 1] : null;
         try
         {
-            Application.Run(new Aplicacion(escritorioPedido));
+            Application.Run(new Aplicacion(escritorioPedido, versionAnterior));
             return 0;
         }
         catch (Exception error)

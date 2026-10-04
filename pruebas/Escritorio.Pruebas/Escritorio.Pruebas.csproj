@@ -14,6 +14,7 @@
     <Compile Include="../../src/Escritorio/Reglas.cs" Link="App/Reglas.cs" />
     <Compile Include="../../src/Escritorio/Config.cs" Link="App/Config.cs" />
     <Compile Include="../../src/Escritorio/Medios.cs" Link="App/Medios.cs" />
+    <Compile Include="../../src/Escritorio/Versiones.cs" Link="App/Versiones.cs" />
   </ItemGroup>
 
   <ItemGroup>

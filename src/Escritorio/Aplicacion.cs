@@ -28,7 +28,7 @@ internal sealed class Aplicacion : ApplicationContext
     /// <summary>Un solo entorno de WebView2 para todos los widgets: comparten procesos y perfil.</summary>
     public Task<CoreWebView2Environment> EntornoWeb { get; }
 
-    public Aplicacion(string? escritorioPedido = null)
+    public Aplicacion(string? escritorioPedido = null, string? versionAnterior = null)
     {
         Rutas.Crear();
         Rutas.ExtraerIntegrados();
@@ -57,6 +57,8 @@ internal sealed class Aplicacion : ApplicationContext
             organizador.AlEntrarA(EscritorioActual);
         SystemEvents.DisplaySettingsChanged += PantallasCambiaron;
         Registro.Info($"Escritorio {Instalacion.Version} iniciado");
+        if (versionAnterior is not null)
+            Avisar($"Escritorio se actualizó a la versión {Instalacion.Version} y quitó la anterior ({versionAnterior}).");
     }
 
     // --- Configuración y estado ---
@@ -145,12 +147,14 @@ internal sealed class Aplicacion : ApplicationContext
         Avisar($"Escritorio «{escritorio.Nombre(Estado.Escritorio!)}»: {(movidas == 1 ? "1 ventana acomodada" : $"{movidas} ventanas acomodadas")}.");
     }
 
-    /// <summary>Órdenes que llegan desde otra copia del programa (Escritorio.exe --escritorio …).</summary>
+    /// <summary>Órdenes que llegan desde otra copia del programa (Escritorio.exe --escritorio …, o una actualización).</summary>
     void Ejecutar(string orden)
     {
         const string prefijo = "escritorio ";
         if (orden.StartsWith(prefijo, StringComparison.Ordinal))
             CambiarEscritorio(IdEscritorio(orden[prefijo.Length..]));
+        else if (orden == "salir")
+            Salir();
     }
 
     // --- Widgets ---
@@ -452,7 +456,7 @@ internal sealed class Aplicacion : ApplicationContext
         }
     }
 
-    void Salir()
+    public void Salir()
     {
         SystemEvents.DisplaySettingsChanged -= PantallasCambiaron;
         organizador.Dispose();

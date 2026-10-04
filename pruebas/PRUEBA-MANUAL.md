@@ -69,7 +69,10 @@ Qué mirar: ¿aparecieron en la pantalla correcta? ¿Tienen el tamaño esperado 
 1. Bandeja → **Instalar en este equipo**. La app se cierra y vuelve a abrirse sola (desde `%LOCALAPPDATA%\Programs\Escritorio`). El menú ya no muestra «Instalar en este equipo».
 2. Debe existir **Escritorio** en el menú Inicio y en **Configuración → Aplicaciones → Aplicaciones instaladas**.
 3. **Iniciar con Windows**: márquelo, cierre sesión y vuelva a entrar: la app debe arrancar sola.
-4. Para desinstalar: bandeja → Salir, y después Configuración → Aplicaciones → Escritorio → Desinstalar. Debe quitar el acceso del menú Inicio y la carpeta de programa; la configuración queda en `%LOCALAPPDATA%\Escritorio`.
+4. **Actualizar:** con la app instalada y abierta, abra un `Escritorio.exe` nuevo (otra compilación) desde Descargas. La app abierta debe cerrarse, y en unos segundos volver a abrirse con el globo «Escritorio se actualizó a la versión …». En `%LOCALAPPDATA%\Programs\Escritorio` debe quedar solo el `.exe` nuevo, y Configuración → Aplicaciones mostrar la versión nueva.
+5. Abra de nuevo el mismo `.exe` de Descargas: no debe pasar nada raro (si la app está abierta, sigue; si no, se abre la instalada).
+6. Abra un `.exe` más viejo: debe avisar que ya hay una versión más nueva y abrir la instalada.
+7. Para desinstalar: bandeja → Salir, y después Configuración → Aplicaciones → Escritorio → Desinstalar. Debe quitar el acceso del menú Inicio y la carpeta de programa; la configuración queda en `%LOCALAPPDATA%\Escritorio`.
 
 ## 10. Reproductor y volúmenes
 
