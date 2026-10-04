@@ -13,3 +13,7 @@ estado.json
 *.tmp
 *.log
 .env
+
+# Residuos de Python y de herramientas
+__pycache__/
+.ruff_cache/
