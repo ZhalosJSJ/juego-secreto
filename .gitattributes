@@ -1,0 +1,5 @@
+# Saltos de línea LF, salvo los .bat, que Windows necesita con CRLF
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ico binary
+*.png binary

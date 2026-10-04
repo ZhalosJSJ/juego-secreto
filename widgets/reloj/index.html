@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Reloj</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      display: grid; place-content: center; text-align: center;
+      background: #0b1220; color: #d9e8ff;
+      font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+      cursor: default;
+    }
+    .hora { font-size: 46px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .fecha { font-size: 14px; color: #8fa6c8; }
+  </style>
+</head>
+<body>
+  <div class="hora" id="hora">--:--</div>
+  <div class="fecha" id="fecha"></div>
+  <script>
+    const formatoHora = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' });
+    const formatoFecha = new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    function actualizar() {
+      const ahora = new Date();
+      document.getElementById('hora').textContent = formatoHora.format(ahora);
+      const fecha = formatoFecha.format(ahora);
+      document.getElementById('fecha').textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+      setTimeout(actualizar, 1000 - ahora.getMilliseconds() + 5);
+    }
+
+    actualizar();
+  </script>
+</body>
+</html>

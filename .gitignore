@@ -1,0 +1,9 @@
+# Entorno de Python
+.venv/
+__pycache__/
+
+# Configuración y datos de cada equipo: nunca se suben (el repositorio es público)
+config.local.json
+.datos/
+*.tmp
+.env

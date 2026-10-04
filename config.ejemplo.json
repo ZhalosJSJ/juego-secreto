@@ -1,0 +1,29 @@
+{
+  "pantalla": "secundaria",
+  "widgets": {
+    "gran-sabio": {
+      "activo": true,
+      "titulo": "Gran Sabio",
+      "url": "http://localhost:8765",
+      "iniciar": "../gran-sabio/iniciar.bat",
+      "entorno": {
+        "NAVEGADOR": "no"
+      },
+      "ancho": 480,
+      "alto": 0,
+      "lado": "derecha",
+      "fijo": true,
+      "seleccionar_texto": true,
+      "fondo": "#040817"
+    },
+    "reloj": {
+      "activo": true,
+      "titulo": "Reloj",
+      "archivo": "widgets/reloj/index.html",
+      "ancho": 280,
+      "alto": 120,
+      "lado": "arriba-izquierda",
+      "fijo": true
+    }
+  }
+}
