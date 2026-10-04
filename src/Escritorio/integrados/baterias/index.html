@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Baterías</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --fondo: #0b1220; --tinta: #d9e8ff; --tenue: #8fa6c8; --pista: #1a2740;
+      --bien: #6ef0be; --medio: #ffc46b; --bajo: #ff8a98;
+    }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--fondo); color: var(--tinta);
+      font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      padding: 12px 16px; box-sizing: border-box; overflow-y: auto;
+      cursor: default; user-select: none;
+    }
+    header {
+      display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;
+      font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue);
+    }
+    header time { font-weight: 400; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+    ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+    li {
+      display: grid; grid-template-columns: 22px minmax(0, 1fr) auto;
+      align-items: center; column-gap: 10px; row-gap: 5px;
+    }
+    svg { grid-row: span 2; width: 22px; height: 22px; color: var(--tenue); }
+    .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nivel { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .barra { grid-column: 2 / 4; height: 4px; border-radius: 2px; background: var(--pista); overflow: hidden; }
+    .barra i { display: block; height: 100%; border-radius: 2px; background: var(--bien); transition: width .4s; }
+    .medio .barra i { background: var(--medio); }
+    .bajo .barra i { background: var(--bajo); }
+    .bajo .nivel { color: var(--bajo); }
+    .sin-dato .nivel { color: var(--tenue); font-weight: 400; }
+    .vacio { margin: 4px 0 0; color: var(--tenue); }
+  </style>
+</head>
+<body>
+  <header><span>Baterías</span><time id="hora"></time></header>
+  <ul id="lista"></ul>
+  <p class="vacio" id="vacio" hidden>Ningún aparato Bluetooth conectado.</p>
+
+  <script>
+    // Íconos de trazo, 24×24. Se elige uno por el nombre del aparato.
+    const ICONOS = {
+      equipo: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+      audifonos: '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/>',
+      mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>',
+      teclado: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+      control: '<path d="M7 8h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L14.5 14h-5l-1.1 1.8A3 3 0 0 1 3 13v-1a4 4 0 0 1 4-4z"/><path d="M8 10.5v3M6.5 12h3M16 11h.01M17.5 13h.01"/>',
+      otro: '<path d="M7 7l10 10-5 5V2l5 5L7 17"/>',
+    };
+
+    function tipoDe(nombre) {
+      const n = nombre.toLowerCase();
+      if (/buds|pods|auricular|aud[ií]fono|head|ear|wh-|wf-|jbl|bose|soundcore|galaxy buds/.test(n)) return 'audifonos';
+      if (/mouse|rat[oó]n|mx (master|anywhere)|viper|deathadder|g\d{3}/.test(n)) return 'mouse';
+      if (/keyboard|teclado|keys|k\d{3}/.test(n)) return 'teclado';
+      if (/controller|gamepad|xbox|dualsense|dualshock|mando|joy-?con/.test(n)) return 'control';
+      return 'otro';
+    }
+
+    function fila({ nombre, nivel, cargando }, tipo) {
+      const li = document.createElement('li');
+      const conDato = Number.isFinite(nivel);
+      li.className = !conDato ? 'sin-dato' : nivel <= 20 ? 'bajo' : nivel <= 50 ? 'medio' : '';
+      li.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[tipo]}</svg>`
+        + '<span class="nombre"></span><span class="nivel"></span><span class="barra"><i></i></span>';
+      // El nombre viene del aparato: se pone como texto, nunca como HTML.
+      li.querySelector('.nombre').textContent = nombre;
+      li.querySelector('.nombre').title = nombre;
+      li.querySelector('.nivel').textContent = conDato ? `${cargando ? '⚡ ' : ''}${nivel} %` : 'sin dato';
+      li.querySelector('.barra i').style.width = conDato ? `${Math.max(0, Math.min(100, nivel))}%` : '0';
+      return li;
+    }
+
+    function pintar(datos) {
+      const lista = document.getElementById('lista');
+      const filas = [];
+      if (datos.equipo) filas.push(fila(datos.equipo, 'equipo'));
+      for (const aparato of datos.dispositivos || []) filas.push(fila(aparato, tipoDe(aparato.nombre || '')));
+      lista.replaceChildren(...filas);
+      document.getElementById('vacio').hidden = (datos.dispositivos || []).length > 0;
+      document.getElementById('hora').textContent =
+        new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(new Date());
+    }
+
+    const puente = window.chrome && window.chrome.webview;
+    const pedir = () => puente && puente.postMessage({ pedir: 'baterias' });
+    if (puente) puente.addEventListener('message', e => { if (e.data && e.data.tipo === 'baterias') pintar(e.data); });
+    document.addEventListener('click', pedir);  // clic = actualizar ahora
+    pedir();
+  </script>
+</body>
+</html>

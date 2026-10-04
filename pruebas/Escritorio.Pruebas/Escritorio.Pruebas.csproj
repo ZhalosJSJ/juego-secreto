@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba la lógica que no depende de Windows (geometría, reglas, configuración):
+       corre en cualquier sistema con: dotnet test pruebas/Escritorio.Pruebas -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/Escritorio/Geometria.cs" Link="App/Geometria.cs" />
+    <Compile Include="../../src/Escritorio/Reglas.cs" Link="App/Reglas.cs" />
+    <Compile Include="../../src/Escritorio/Config.cs" Link="App/Config.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+</Project>

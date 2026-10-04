@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>escritorio.ico</ApplicationIcon>
+    <AssemblyName>Escritorio</AssemblyName>
+    <RootNamespace>Escritorio</RootNamespace>
+    <Product>Escritorio</Product>
+    <Description>Widgets para el escritorio de Windows 11</Description>
+    <Version>0.2.0</Version>
+
+    <!-- Permite compilar desde Linux o macOS; la app corre solo en Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <!-- Un solo .exe con todo adentro: no hace falta instalar .NET ni nada más. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <SatelliteResourceLanguages>es</SatelliteResourceLanguages>
+    <DebugType>embedded</DebugType>
+    <AllowedReferenceRelatedFileExtensions>.pdb</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <!-- El paquete de WebView2 agrega también su control de WPF, que esta app no usa (y choca con WinForms). -->
+  <Target Name="SinWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <!-- Los widgets incluidos viajan dentro del .exe; al iniciar se copian a %LOCALAPPDATA%\Escritorio\integrados. -->
+    <EmbeddedResource Include="integrados\**\*" LogicalName="integrados/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="escritorio.ico" LogicalName="escritorio.ico" />
+  </ItemGroup>
+
+</Project>

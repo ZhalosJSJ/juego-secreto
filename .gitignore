@@ -1,9 +1,19 @@
-# Entorno de Python
+# Compilación de .NET
+bin/
+obj/
+publicado/
+*.user
+
+# Entorno de Python (versión anterior)
 .venv/
 __pycache__/
 
-# Configuración y datos de cada equipo: nunca se suben (el repositorio es público)
+# Configuración y datos de cada equipo: nunca se suben (el repositorio es público).
+# La app nativa los guarda fuera del repositorio, en %LOCALAPPDATA%\Escritorio.
 config.local.json
+config.json
+estado.json
 .datos/
 *.tmp
+*.log
 .env
