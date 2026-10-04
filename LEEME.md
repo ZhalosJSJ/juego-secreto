@@ -1,6 +1,6 @@
 # Escritorio
 
-App nativa para Windows 11 que pone **widgets** en su escritorio, **en la segunda pantalla por defecto**, y **acomoda las ventanas de otros programas** donde usted quiera. Incluye el **Gran Sabio**, un **reloj** y las **baterías** de sus aparatos Bluetooth.
+App nativa para Windows 11 que pone **widgets** en su escritorio, **en la segunda pantalla por defecto**, y **acomoda las ventanas de otros programas** donde usted quiera. Todo se agrupa en **escritorios**: distribuciones con nombre entre las que cambia con un clic. Incluye el **Gran Sabio**, un **reloj** y las **baterías** de sus aparatos Bluetooth.
 
 Es un solo archivo, `Escritorio.exe`. No necesita instalar Python, .NET ni nada más: trae todo adentro y usa WebView2, que ya viene con Windows 11.
 
@@ -20,6 +20,7 @@ La primera vez, Windows puede mostrar «Windows protegió su PC», porque el .ex
 
 | Opción | Qué hace |
 |---|---|
+| Escritorios | Cambia de escritorio (ver abajo), o vuelve al modo libre. |
 | Pantalla de los widgets | Elige en qué pantalla van los widgets. |
 | Bloquear posición | Oculta la franja de arrastre para no moverlos sin querer. |
 | Restablecer posiciones | Los devuelve a su lugar inicial. |
@@ -31,6 +32,52 @@ La primera vez, Windows puede mostrar «Windows protegió su PC», porque el .ex
 
 Para mover un widget, arrástrelo desde la franja delgada de su borde superior. Los widgets no aparecen en la barra de tareas ni en Alt+Tab, y vuelven detrás de las demás ventanas cuando deja de usarlos. Si conecta o desconecta una pantalla, se reacomodan solos.
 
+## Escritorios
+
+Un escritorio es una distribución con nombre: qué widgets se ven, cómo se acomodan, y dónde van las ventanas de otros programas. Se cambia desde la bandeja → **Escritorios**. La configuración por defecto trae dos:
+
+- **Trabajo**: los widgets apilados en una columna a la derecha (reloj, baterías y el Gran Sabio ocupando el resto), y Discord a la izquierda llenando todo el espacio que dejan.
+- **Solo widgets**: todos los widgets, apilados a la derecha, sin reglas de ventanas.
+
+**Libre (sin escritorio)** es el modo de siempre: cada widget en su `lado`, y solo las reglas generales.
+
+Al cambiar a un escritorio se acomodan las ventanas que ya están abiertas y se abren los programas que tengan `abrir`. Al iniciar la app no se abre ni se mueve nada: solo se recuerda el último escritorio.
+
+Así se escriben en `config.json`:
+
+```json
+"escritorios": {
+  "trabajo": {
+    "titulo": "Trabajo",
+    "apilar": "derecha",
+    "widgets": { "reloj": true, "baterias": true, "gran-sabio": true },
+    "ventanas": [
+      { "programa": "Discord.exe", "lado": "izquierda", "ancho": "100%", "alto": "100%", "abrir": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Discord Inc\\Discord.lnk" }
+    ]
+  },
+  "juego": {
+    "titulo": "Juego",
+    "pantalla": "principal",
+    "widgets": { "baterias": { "lado": "abajo-derecha" }, "reloj": false }
+  },
+  "widgets": { "titulo": "Solo widgets", "apilar": "derecha" }
+}
+```
+
+| Clave | Para qué sirve |
+|---|---|
+| `titulo` | Cómo aparece en el menú. |
+| `pantalla` | Pantalla de los widgets en este escritorio. Si falta, la general. |
+| `apilar` | `"derecha"` o `"izquierda"`: los widgets van en una columna de ese lado, en el orden en que están escritos, uno debajo del otro. Los de `alto: 0` se reparten lo que sobra. Sin `apilar`, cada widget va a su `lado`. |
+| `widgets` | Cuáles se ven y en qué orden: `true`, `false`, o un objeto con `lado`, `ancho`, `alto` o `pantalla` propios. Si falta, se ven todos. |
+| `ventanas` | Reglas de ventanas propias de este escritorio. Mandan sobre las generales. |
+
+Dentro de un escritorio con `apilar`, las ventanas se reparten **el espacio que dejan los widgets**: `"ancho": "100%"` es «todo lo que queda al lado de la columna». Y `abrir` abre el programa (o un acceso directo del menú Inicio) si no está abierto al entrar al escritorio.
+
+Las posiciones que arrastra a mano se recuerdan por escritorio. Un widget que haya movido deja de apilarse hasta que use **Restablecer posiciones**.
+
+**Para cambiar con una tecla:** cree un acceso directo a `Escritorio.exe --escritorio trabajo` (o `--escritorio libre`), abra sus propiedades y asígnele una tecla de método abreviado.
+
 ## Organizar ventanas de otros programas
 
 Para que, por ejemplo, Discord se abra siempre en la segunda pantalla:
@@ -38,7 +85,7 @@ Para que, por ejemplo, Discord se abra siempre en la segunda pantalla:
 1. Abra Discord y déjelo donde y del tamaño que lo quiere (o maximizado).
 2. Bandeja → **Organizar ventanas → Recordar dónde está… → Discord**.
 
-Desde entonces, cada vez que se abra, va a ese lugar. Solo se acomoda al aparecer: después puede moverlo libremente.
+Desde entonces, cada vez que se abra, va a ese lugar. Solo se acomoda al aparecer: después puede moverlo libremente. Si está en un escritorio, el menú pregunta si la regla vale **solo en ese escritorio** o **en todos**.
 
 - **Acomodar las abiertas ahora** aplica las reglas a lo que ya está abierto.
 - **Olvidar regla** quita una.
@@ -57,8 +104,10 @@ Las reglas quedan en `config.json` y se pueden escribir a mano:
 }
 ```
 
-- `x`, `y`, `ancho` y `alto` se miden en píxeles desde la esquina del área de trabajo de esa pantalla.
-- Sin posición exacta, la ventana conserva su tamaño y se pone en su `lado`. Si no se indica, va al centro.
+- `x` e `y` se miden en píxeles desde la esquina del espacio disponible de esa pantalla (el área de trabajo o, en un escritorio con widgets apilados, lo que queda junto a la columna).
+- `ancho` y `alto` van en píxeles (`800`) o como porcentaje de ese espacio (`"60%"`). Lo que falte conserva el tamaño actual de la ventana.
+- Sin `x` e `y`, la ventana se pone en su `lado`. Si no se indica, va al centro.
+- `maximizar` ocupa toda la pantalla, también sobre los widgets.
 - Las apps de la Tienda de Microsoft se distinguen por `titulo`.
 - Windows no deja mover ventanas de programas abiertos como administrador (por ejemplo, el Administrador de tareas).
 
@@ -100,6 +149,7 @@ Cada widget acepta:
 | `titulo` | Su nombre. |
 | `ancho`, `alto` | Tamaño en píxeles a escala 100 % (se ajusta solo a la escala de la pantalla). `alto: 0` ocupa todo el alto. |
 | `lado` | Posición inicial: `derecha`, `izquierda`, `centro`, `arriba`, `abajo`, `arriba-derecha`, `arriba-izquierda`, `abajo-derecha`, `abajo-izquierda`. |
+| `pantalla` | Pantalla propia de este widget. Si falta, la de los widgets. |
 | `fijo` | `true` (por defecto): sin marco, fuera de la barra de tareas y al fondo. `false`: ventana normal. |
 | `activo` | `false` lo desactiva sin borrarlo. |
 | `iniciar` | Programa que se ejecuta si la `url` no responde. |
@@ -119,7 +169,7 @@ Su `localStorage` se conserva entre reinicios. Los widgets de `src/Escritorio/in
 Todo queda en `%LOCALAPPDATA%\Escritorio`, nunca en el repositorio:
 
 - `config.json`: su configuración.
-- `estado.json`: posiciones de los widgets.
+- `estado.json`: posiciones de los widgets y el escritorio activo.
 - `registro.log`: registro de errores; mírelo si algo no funciona.
 - `widgets\`: sus widgets propios.
 - `webview\`: datos del navegador interno.

@@ -26,25 +26,32 @@ public static class Reglas
               .OrderByDescending(r => !string.IsNullOrEmpty(r.Titulo))
               .FirstOrDefault();
 
+    /// <summary>Busca por capas: la primera capa que tenga una regla para la ventana gana (escritorio antes que generales).</summary>
+    public static Regla? Buscar(IEnumerable<IEnumerable<Regla>> capas, string proceso, string titulo) =>
+        capas.Select(capa => Buscar(capa, proceso, titulo)).FirstOrDefault(r => r is not null);
+
     /// <summary>
-    /// Dónde va la ventana. Con posición exacta, esa (ajustada a la pantalla).
-    /// Sin ella, conserva su tamaño y se pone en su «lado», pegada al borde (por defecto, al centro).
+    /// Dónde va la ventana dentro del espacio disponible (el área de trabajo, o lo que dejan libre los widgets).
+    /// Con «x» e «y», esa posición exacta. Sin ellas, se pone en su «lado», pegada al borde (por defecto, al centro).
+    /// El tamaño se toma de «ancho» y «alto» (píxeles o porcentaje); lo que falte conserva el actual.
     /// </summary>
-    public static Rect Destino(Regla regla, Pantalla pantalla, Rect actual)
+    public static Rect Destino(Regla regla, Rect espacio, Rect actual)
     {
-        var trabajo = pantalla.Trabajo;
-        if (regla.TieneRect)
-        {
-            var exacto = new Rect(trabajo.X + (regla.X ?? 0), trabajo.Y + (regla.Y ?? 0), regla.Ancho!.Value, regla.Alto!.Value);
-            return Geometria.Dentro(exacto, trabajo);
-        }
-        var tamano = Geometria.Dentro(actual with { X = trabajo.X, Y = trabajo.Y }, trabajo);
+        int ancho = regla.Ancho?.Resolver(espacio.Ancho) ?? actual.Ancho;
+        int alto = regla.Alto?.Resolver(espacio.Alto) ?? actual.Alto;
+        ancho = Math.Clamp(ancho, 1, espacio.Ancho);
+        alto = Math.Clamp(alto, 1, espacio.Alto);
+        if (regla.TienePosicion)
+            return Geometria.Dentro(new Rect(espacio.X + regla.X!.Value, espacio.Y + regla.Y!.Value, ancho, alto), espacio);
         var lado = string.IsNullOrWhiteSpace(regla.Lado) ? "centro" : regla.Lado;
-        return Geometria.Posicionar(trabajo, tamano.Ancho, tamano.Alto, lado, margen: 0);
+        return Geometria.Posicionar(espacio, ancho, alto, lado, margen: 0);
     }
 
-    /// <summary>La regla que guarda «Recordar posición» para una ventana tal como está ahora.</summary>
-    public static Regla Recordar(string proceso, string titulo, Rect rect, bool maximizada, IReadOnlyList<Pantalla> pantallas)
+    /// <summary>
+    /// La regla que guarda «Recordar dónde está» para una ventana tal como está ahora.
+    /// <paramref name="espacioDe"/> da el espacio disponible en cada pantalla (el mismo que usará <see cref="Destino"/>).
+    /// </summary>
+    public static Regla Recordar(string proceso, string titulo, Rect rect, bool maximizada, IReadOnlyList<Pantalla> pantallas, Func<Pantalla, Rect> espacioDe)
     {
         var pantalla = Geometria.PantallaDe(rect, pantallas);
         var regla = new Regla
@@ -59,8 +66,9 @@ public static class Reglas
         }
         else
         {
-            regla.X = rect.X - pantalla.Trabajo.X;
-            regla.Y = rect.Y - pantalla.Trabajo.Y;
+            var espacio = espacioDe(pantalla);
+            regla.X = rect.X - espacio.X;
+            regla.Y = rect.Y - espacio.Y;
             regla.Ancho = rect.Ancho;
             regla.Alto = rect.Alto;
         }

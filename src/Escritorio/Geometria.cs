@@ -105,6 +105,9 @@ public static class Geometria
         return new Rect(x, y, ancho, alto);
     }
 
+    /// <summary>Píxeles al 100 % → píxeles físicos de esa pantalla.</summary>
+    public static int Escalado(int valor, Pantalla pantalla) => (int)Math.Round(valor * pantalla.Escala);
+
     /// <summary>Mueve (y si hace falta achica) el rectángulo para que quede entero en el área de trabajo.</summary>
     public static Rect Dentro(Rect rect, Rect trabajo)
     {
@@ -115,13 +118,62 @@ public static class Geometria
         return new Rect(x, y, ancho, alto);
     }
 
+    /// <summary>Un widget para apilar: tamaño ya escalado a la pantalla. alto = 0 reparte el espacio que sobre.</summary>
+    public readonly record struct Apilable(string Id, int Ancho, int Alto);
+
+    /// <summary>El resultado de apilar: dónde va cada widget y la franja vertical que ocupan entre todos.</summary>
+    public sealed record Pila(Dictionary<string, Rect> Posiciones, Rect? Columna);
+
+    /// <summary>
+    /// Apila los widgets en una columna pegada al lado pedido («derecha» o «izquierda»), en orden,
+    /// de arriba abajo y separados por el margen. Los de alto 0 se reparten el alto que sobre.
+    /// La columna es tan ancha como el widget más ancho; los angostos se alinean al borde exterior.
+    /// </summary>
+    public static Pila Apilar(Rect trabajo, IReadOnlyList<Apilable> widgets, string? lado, int margen)
+    {
+        var posiciones = new Dictionary<string, Rect>();
+        if (widgets.Count == 0)
+            return new Pila(posiciones, null);
+        bool izquierda = string.Equals((lado ?? "").Trim(), "izquierda", StringComparison.OrdinalIgnoreCase);
+        int libreAlto = Math.Max(trabajo.Alto - 2 * margen, 100);
+        int anchoColumna = Math.Clamp(widgets.Max(w => w.Ancho), 100, Math.Max(trabajo.Ancho - 2 * margen, 100));
+        int fijos = widgets.Where(w => w.Alto > 0).Sum(w => Math.Min(w.Alto, libreAlto));
+        int flexibles = widgets.Count(w => w.Alto <= 0);
+        int sobrante = libreAlto - fijos - (widgets.Count - 1) * margen;
+        int altoFlexible = flexibles > 0 ? Math.Max(sobrante / flexibles, 100) : 0;
+        int columnaX = izquierda ? trabajo.X + margen : trabajo.Derecha - margen - anchoColumna;
+        int y = trabajo.Y + margen;
+        foreach (var widget in widgets)
+        {
+            int ancho = Math.Min(widget.Ancho > 0 ? widget.Ancho : anchoColumna, anchoColumna);
+            int alto = widget.Alto > 0 ? Math.Min(widget.Alto, libreAlto) : altoFlexible;
+            int x = izquierda ? columnaX : columnaX + anchoColumna - ancho;
+            posiciones[widget.Id] = Dentro(new Rect(x, y, ancho, alto), trabajo);
+            y += alto + margen;
+        }
+        return new Pila(posiciones, new Rect(columnaX, trabajo.Y, anchoColumna, trabajo.Alto));
+    }
+
+    /// <summary>El área de trabajo sin la columna de widgets (ni su margen): el espacio para las demás ventanas.</summary>
+    public static Rect ZonaLibre(Rect trabajo, Rect? columna, string? lado, int margen)
+    {
+        if (columna is not { } franja)
+            return trabajo;
+        if (string.Equals((lado ?? "").Trim(), "izquierda", StringComparison.OrdinalIgnoreCase))
+        {
+            int x = franja.Derecha + margen;
+            return new Rect(x, trabajo.Y, Math.Max(trabajo.Derecha - x, 100), trabajo.Alto);
+        }
+        return new Rect(trabajo.X, trabajo.Y, Math.Max(franja.X - margen - trabajo.X, 100), trabajo.Alto);
+    }
+
     /// <summary>
     /// Dónde va un widget: su posición guardada (relativa al área de trabajo) o la de su «lado».
     /// El tamaño del archivo de configuración está en píxeles al 100 % y se escala a la pantalla.
     /// </summary>
     public static Rect UbicarWidget(Pantalla pantalla, int ancho, int alto, string? lado, Posicion? guardada)
     {
-        int Escalar(int valor) => (int)Math.Round(valor * pantalla.Escala);
+        int Escalar(int valor) => Escalado(valor, pantalla);
         var rect = Posicionar(pantalla.Trabajo, Escalar(ancho), Escalar(alto), lado, Escalar(Margen));
         if (guardada is not null)
         {

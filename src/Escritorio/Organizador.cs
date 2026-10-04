@@ -6,10 +6,10 @@ namespace Escritorio;
 internal sealed record VentanaAbierta(IntPtr Hwnd, string Proceso, string Titulo);
 
 /// <summary>
-/// Organiza las ventanas de otros programas según las reglas de la configuración: cuando aparece
-/// una ventana nueva (Windows avisa con un gancho de eventos, sin revisar nada periódicamente),
-/// se la manda a su pantalla y posición. Cada ventana se acomoda una sola vez: después, el usuario
-/// la mueve donde quiera.
+/// Organiza las ventanas de otros programas según las reglas (las del escritorio actual y las
+/// generales): cuando aparece una ventana nueva (Windows avisa con un gancho de eventos, sin revisar
+/// nada periódicamente), se la manda a su pantalla y posición. Cada ventana se acomoda una sola vez:
+/// después, el usuario la mueve donde quiera. Al cambiar de escritorio se acomodan todas las abiertas.
 /// </summary>
 internal sealed class Organizador : IDisposable
 {
@@ -55,7 +55,7 @@ internal sealed class Organizador : IDisposable
             vistas.Remove(hwnd);
             return;
         }
-        if (!Ajustes.Activo || Ajustes.Reglas.Count == 0 || vistas.Contains(hwnd) || !EsVentanaPrincipal(hwnd))
+        if (!Ajustes.Activo || vistas.Contains(hwnd) || !EsVentanaPrincipal(hwnd))
             return;
         vistas.Add(hwnd);
         _ = AplicarEnUnMomento(hwnd);
@@ -108,7 +108,7 @@ internal sealed class Organizador : IDisposable
         if (!EsVentanaPrincipal(hwnd) || Win32.IsIconic(hwnd))
             return false;
         var proceso = Proceso(hwnd);
-        var regla = Reglas.Buscar(Ajustes.Reglas, proceso, Win32.Titulo(hwnd));
+        var regla = Reglas.Buscar(app.ReglasActivas(), proceso, Win32.Titulo(hwnd));
         if (regla is null)
             return false;
 
@@ -118,7 +118,7 @@ internal sealed class Organizador : IDisposable
             Win32.ShowWindow(hwnd, Win32.SW_RESTORE);
         if (Win32.RectDe(hwnd) is not { } actual)
             return false;
-        var destino = Reglas.Destino(regla, pantalla, actual);
+        var destino = Reglas.Destino(regla, app.EspacioVentanas(pantalla), actual);
 
         // Dos veces: al pasar a una pantalla con otra escala, la app se reajusta después del primer movimiento.
         for (int vez = 0; vez < 2; vez++)
@@ -131,7 +131,7 @@ internal sealed class Organizador : IDisposable
                 return false;
             }
         }
-        if (regla.Maximizar || (estabaMaximizada && !regla.TieneRect))
+        if (regla.Maximizar || (estabaMaximizada && !regla.TienePosicion && regla.Ancho is null && regla.Alto is null))
             Win32.ShowWindow(hwnd, Win32.SW_MAXIMIZE);
         return true;
     }
@@ -151,14 +151,36 @@ internal sealed class Organizador : IDisposable
 
     public int OrdenarAhora() => VentanasAbiertas().Count(v => Aplicar(v.Hwnd));
 
-    void Recordar(VentanaAbierta ventana)
+    /// <summary>Al entrar a un escritorio: abre los programas con «abrir» que falten y acomoda las ventanas abiertas.</summary>
+    public int AlEntrarA(Escritorio escritorio)
+    {
+        var abiertas = VentanasAbiertas();
+        foreach (var regla in escritorio.Ventanas.Where(r => !string.IsNullOrWhiteSpace(r.Abrir)))
+        {
+            if (abiertas.Any(v => Reglas.Coincide(regla, v.Proceso, v.Titulo)))
+                continue;
+            try
+            {
+                var ruta = Environment.ExpandEnvironmentVariables(regla.Abrir!.Trim().Trim('"'));
+                Process.Start(new ProcessStartInfo(ruta) { UseShellExecute = true });
+                Registro.Info($"Se abrió {regla.Describir()} ({ruta})");
+            }
+            catch (Exception error)
+            {
+                Registro.Error($"No se pudo abrir {regla.Describir()}", error);
+            }
+        }
+        return abiertas.Count(v => Aplicar(v.Hwnd));
+    }
+
+    void Recordar(VentanaAbierta ventana, List<Regla> destino, string donde)
     {
         if (Win32.RectDe(ventana.Hwnd) is not { } rect)
             return;
-        var regla = Reglas.Recordar(ventana.Proceso, ventana.Titulo, rect, Win32.IsZoomed(ventana.Hwnd), Pantallas.Listar());
-        Reglas.Guardar(Ajustes.Reglas, regla);
+        var regla = Reglas.Recordar(ventana.Proceso, ventana.Titulo, rect, Win32.IsZoomed(ventana.Hwnd), Pantallas.Listar(), app.EspacioVentanas);
+        Reglas.Guardar(destino, regla);
         app.GuardarConfig();
-        app.Avisar($"Cada vez que se abra, {regla.Describir()} irá a este mismo lugar.");
+        app.Avisar($"{regla.Describir()} irá a este mismo lugar cada vez que se abra {donde}.");
     }
 
     public ToolStripMenuItem CrearMenu()
@@ -176,24 +198,39 @@ internal sealed class Organizador : IDisposable
         });
         raiz.DropDownItems.Add(new ToolStripSeparator());
 
+        var escritorio = app.EscritorioActual;
+        var nombreEscritorio = escritorio?.Nombre(app.EscritorioActualId!);
         var recordar = new ToolStripMenuItem("Recordar dónde está…");
         foreach (var ventana in VentanasAbiertas().OrderBy(v => v.Proceso, StringComparer.OrdinalIgnoreCase))
-            recordar.DropDownItems.Add(Recortar($"{ventana.Proceso} — {ventana.Titulo}"), null, (_, _) => Recordar(ventana));
+        {
+            var texto = Aplicacion.Recortar($"{ventana.Proceso} — {ventana.Titulo}");
+            if (escritorio is null)
+            {
+                recordar.DropDownItems.Add(texto, null, (_, _) => Recordar(ventana, Ajustes.Reglas, "en todos los escritorios"));
+                continue;
+            }
+            var opciones = new ToolStripMenuItem(texto);
+            opciones.DropDownItems.Add($"Solo en «{nombreEscritorio}»", null, (_, _) => Recordar(ventana, escritorio.Ventanas, $"en «{nombreEscritorio}»"));
+            opciones.DropDownItems.Add("En todos los escritorios", null, (_, _) => Recordar(ventana, Ajustes.Reglas, "en todos los escritorios"));
+            recordar.DropDownItems.Add(opciones);
+        }
         recordar.Enabled = recordar.DropDownItems.Count > 0;
         raiz.DropDownItems.Add(recordar);
 
         var olvidar = new ToolStripMenuItem("Olvidar regla");
+        if (escritorio is not null)
+            foreach (var regla in escritorio.Ventanas.ToList())
+                olvidar.DropDownItems.Add(Aplicacion.Recortar($"«{nombreEscritorio}»: {regla.Describir()}"), null, (_, _) => Olvidar(escritorio.Ventanas, regla));
         foreach (var regla in Ajustes.Reglas.ToList())
-            olvidar.DropDownItems.Add(Recortar(regla.Describir()), null, (_, _) =>
-            {
-                Ajustes.Reglas.Remove(regla);
-                app.GuardarConfig();
-            });
+            olvidar.DropDownItems.Add(Aplicacion.Recortar($"Siempre: {regla.Describir()}"), null, (_, _) => Olvidar(Ajustes.Reglas, regla));
         olvidar.Enabled = olvidar.DropDownItems.Count > 0;
         raiz.DropDownItems.Add(olvidar);
         return raiz;
     }
 
-    /// <summary>Texto para el menú: corto, y con «&amp;» escapado (si no, el menú lo toma como atajo).</summary>
-    static string Recortar(string texto) => (texto.Length <= 70 ? texto : texto[..67] + "…").Replace("&", "&&");
+    void Olvidar(List<Regla> lista, Regla regla)
+    {
+        lista.Remove(regla);
+        app.GuardarConfig();
+    }
 }

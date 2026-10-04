@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -16,6 +17,10 @@ public sealed class Config
 
     [JsonPropertyName("organizar")]
     public AjustesOrganizar Organizar { get; set; } = new();
+
+    /// <summary>Distribuciones con nombre: qué widgets se ven y dónde van las ventanas de otros programas.</summary>
+    [JsonPropertyName("escritorios")]
+    public Dictionary<string, Escritorio> Escritorios { get; set; } = new();
 
     public static Config PorDefecto() => new()
     {
@@ -49,8 +54,64 @@ public sealed class Config
                 Lado = "abajo-izquierda",
             },
         },
+        Escritorios =
+        {
+            ["trabajo"] = new Escritorio
+            {
+                Titulo = "Trabajo",
+                Apilar = "derecha",
+                Widgets = new()
+                {
+                    ["reloj"] = new WidgetEnEscritorio(),
+                    ["baterias"] = new WidgetEnEscritorio(),
+                    ["gran-sabio"] = new WidgetEnEscritorio(),
+                },
+                Ventanas =
+                {
+                    new Regla { Programa = "Discord.exe", Pantalla = "secundaria", Lado = "izquierda", Ancho = Medida.Porcentaje(100), Alto = Medida.Porcentaje(100) },
+                },
+            },
+            ["widgets"] = new Escritorio
+            {
+                Titulo = "Solo widgets",
+                Apilar = "derecha",
+            },
+        },
     };
+
+    /// <summary>
+    /// Los widgets que se ven en un escritorio, en orden, con sus ajustes de posición ya aplicados.
+    /// Sin escritorio (o si el escritorio no dice «widgets»), se ven todos los activos tal como están.
+    /// Un escritorio con «widgets» muestra solo esos, en ese orden.
+    /// </summary>
+    public List<WidgetEfectivo> WidgetsDe(Escritorio? escritorio)
+    {
+        var lista = new List<WidgetEfectivo>();
+        if (escritorio?.Widgets is null)
+        {
+            foreach (var (id, ajustes) in Widgets)
+                if (ajustes.Activo)
+                    lista.Add(new WidgetEfectivo(id, ajustes, ajustes.Ancho, ajustes.Alto, ajustes.Lado, ajustes.Pantalla));
+            return lista;
+        }
+        foreach (var (id, enEscritorio) in escritorio.Widgets)
+        {
+            if (!enEscritorio.Visible || !Widgets.TryGetValue(id, out var ajustes) || !ajustes.Activo)
+                continue;
+            lista.Add(new WidgetEfectivo(
+                id,
+                ajustes,
+                enEscritorio.Ancho ?? ajustes.Ancho,
+                enEscritorio.Alto ?? ajustes.Alto,
+                enEscritorio.Lado ?? ajustes.Lado,
+                enEscritorio.Pantalla ?? ajustes.Pantalla));
+        }
+        return lista;
+    }
 }
+
+/// <summary>Un widget tal como se muestra en el escritorio actual: sus ajustes y su posición efectiva.</summary>
+public sealed record WidgetEfectivo(string Id, AjustesWidget Ajustes, int Ancho, int Alto, string Lado, string? Pantalla);
 
 public sealed class AjustesWidget
 {
@@ -71,6 +132,10 @@ public sealed class AjustesWidget
     [JsonPropertyName("alto")] public int Alto { get; set; }
     [JsonPropertyName("lado")] public string Lado { get; set; } = "derecha";
 
+    /// <summary>Pantalla propia de este widget; si falta, la pantalla de los widgets.</summary>
+    [JsonPropertyName("pantalla"), JsonConverter(typeof(TextoFlexible))]
+    public string? Pantalla { get; set; }
+
     /// <summary>Sin marco, fuera de la barra de tareas y detrás de las demás ventanas.</summary>
     [JsonPropertyName("fijo")] public bool Fijo { get; set; } = true;
     [JsonPropertyName("fondo")] public string Fondo { get; set; } = "#0b1220";
@@ -78,10 +143,46 @@ public sealed class AjustesWidget
     [JsonIgnore] public string Nombre => string.IsNullOrWhiteSpace(Titulo) ? "widget" : Titulo!;
 }
 
+/// <summary>Una distribución con nombre.</summary>
+public sealed class Escritorio
+{
+    [JsonPropertyName("titulo")] public string? Titulo { get; set; }
+
+    /// <summary>Pantalla de los widgets en este escritorio; si falta, la general.</summary>
+    [JsonPropertyName("pantalla"), JsonConverter(typeof(TextoFlexible))]
+    public string? Pantalla { get; set; }
+
+    /// <summary>«derecha» o «izquierda»: los widgets se apilan en una columna de ese lado, en orden.</summary>
+    [JsonPropertyName("apilar")] public string? Apilar { get; set; }
+
+    /// <summary>Qué widgets se ven (true, false o ajustes de posición). Si falta, todos.</summary>
+    [JsonPropertyName("widgets")] public Dictionary<string, WidgetEnEscritorio>? Widgets { get; set; }
+
+    /// <summary>Reglas de ventanas propias de este escritorio; mandan sobre las generales.</summary>
+    [JsonPropertyName("ventanas")] public List<Regla> Ventanas { get; set; } = new();
+
+    public string Nombre(string id) => string.IsNullOrWhiteSpace(Titulo) ? id : Titulo!;
+}
+
+/// <summary>Cómo se ve un widget dentro de un escritorio. En el JSON puede ser true, false o un objeto.</summary>
+[JsonConverter(typeof(WidgetEnEscritorioConverter))]
+public sealed class WidgetEnEscritorio
+{
+    public bool Visible { get; set; } = true;
+    public int? Ancho { get; set; }
+    public int? Alto { get; set; }
+    public string? Lado { get; set; }
+    public string? Pantalla { get; set; }
+
+    internal bool SoloVisibilidad => Ancho is null && Alto is null && Lado is null && Pantalla is null;
+}
+
 public sealed class AjustesOrganizar
 {
     /// <summary>Aplicar las reglas a cada ventana nueva que aparezca.</summary>
     [JsonPropertyName("activo")] public bool Activo { get; set; } = true;
+
+    /// <summary>Reglas generales: valen en todos los escritorios.</summary>
     [JsonPropertyName("reglas")] public List<Regla> Reglas { get; set; } = new();
 }
 
@@ -97,29 +198,71 @@ public sealed class Regla
     [JsonPropertyName("pantalla"), JsonConverter(typeof(TextoFlexible))]
     public string Pantalla { get; set; } = "secundaria";
 
-    /// <summary>Posición exacta en píxeles físicos, relativa al área de trabajo (la graba «Recordar posición»).</summary>
+    /// <summary>Posición exacta en píxeles, relativa a la esquina del espacio disponible (la graba «Recordar dónde está»).</summary>
     [JsonPropertyName("x")] public int? X { get; set; }
     [JsonPropertyName("y")] public int? Y { get; set; }
-    [JsonPropertyName("ancho")] public int? Ancho { get; set; }
-    [JsonPropertyName("alto")] public int? Alto { get; set; }
 
-    /// <summary>Sin posición exacta: conserva su tamaño y se pone en este lado (por defecto, al centro).</summary>
+    /// <summary>Tamaño: píxeles (800) o porcentaje del espacio disponible ("60%"). Si falta, conserva el actual.</summary>
+    [JsonPropertyName("ancho")] public Medida? Ancho { get; set; }
+    [JsonPropertyName("alto")] public Medida? Alto { get; set; }
+
+    /// <summary>Sin posición exacta: se pone en este lado (por defecto, al centro).</summary>
     [JsonPropertyName("lado")] public string? Lado { get; set; }
     [JsonPropertyName("maximizar")] public bool Maximizar { get; set; }
 
-    [JsonIgnore] public bool TieneRect => Ancho is > 0 && Alto is > 0;
+    /// <summary>Opcional: programa o acceso directo que se abre al cambiar a un escritorio, si no está abierto.</summary>
+    [JsonPropertyName("abrir")] public string? Abrir { get; set; }
+
+    [JsonIgnore] public bool TienePosicion => X.HasValue && Y.HasValue;
 
     public string Describir() => string.IsNullOrWhiteSpace(Titulo) ? Programa : $"{Programa} («{Titulo}»)";
+}
+
+/// <summary>Un tamaño en píxeles o como porcentaje del espacio disponible.</summary>
+[JsonConverter(typeof(MedidaConverter))]
+public readonly record struct Medida(int? Pixeles, double? Porciento)
+{
+    public static Medida Pixel(int pixeles) => new(pixeles, null);
+    public static Medida Porcentaje(double porciento) => new(null, porciento);
+
+    public static implicit operator Medida(int pixeles) => Pixel(pixeles);
+
+    public int Resolver(int total) =>
+        Pixeles ?? (int)Math.Round(total * (Porciento ?? 100) / 100);
+
+    public static bool TryParse(string? texto, out Medida medida)
+    {
+        medida = default;
+        var limpio = (texto ?? "").Trim();
+        if (limpio.EndsWith('%') && double.TryParse(limpio[..^1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var porciento))
+        {
+            medida = Porcentaje(porciento);
+            return true;
+        }
+        if (int.TryParse(limpio, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pixeles))
+        {
+            medida = Pixel(pixeles);
+            return true;
+        }
+        return false;
+    }
+
+    public override string ToString() =>
+        Pixeles is { } px ? px.ToString(CultureInfo.InvariantCulture) : $"{(Porciento ?? 0).ToString(CultureInfo.InvariantCulture)}%";
 }
 
 /// <summary>estado.json: lo que la app recuerda sola.</summary>
 public sealed class Estado
 {
+    /// <summary>Posiciones elegidas por el usuario. Clave: «widget» o «escritorio/widget».</summary>
     [JsonPropertyName("posiciones")] public Dictionary<string, Posicion> Posiciones { get; set; } = new();
     [JsonPropertyName("bloqueado")] public bool Bloqueado { get; set; }
+
+    /// <summary>El escritorio activo; null = libre.</summary>
+    [JsonPropertyName("escritorio")] public string? Escritorio { get; set; }
 }
 
-/// <summary>Posición elegida por el usuario, relativa al área de trabajo de la pantalla de los widgets.</summary>
+/// <summary>Posición elegida por el usuario, relativa al área de trabajo de la pantalla del widget.</summary>
 public sealed class Posicion
 {
     [JsonPropertyName("dx")] public int Dx { get; set; }
@@ -163,16 +306,81 @@ public sealed class TextoFlexible : JsonConverter<string>
     public override string Read(ref Utf8JsonReader lector, Type tipo, JsonSerializerOptions opciones) =>
         lector.TokenType switch
         {
-            JsonTokenType.Number => lector.GetInt32().ToString(),
+            JsonTokenType.Number => lector.GetInt32().ToString(CultureInfo.InvariantCulture),
             JsonTokenType.String => lector.GetString() ?? "",
             _ => throw new JsonException("Se esperaba un texto o un número."),
         };
 
     public override void Write(Utf8JsonWriter escritor, string valor, JsonSerializerOptions opciones)
     {
-        if (int.TryParse(valor, out var numero))
+        if (int.TryParse(valor, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numero))
             escritor.WriteNumberValue(numero);
         else
             escritor.WriteStringValue(valor);
+    }
+}
+
+/// <summary>800 o "60%".</summary>
+public sealed class MedidaConverter : JsonConverter<Medida>
+{
+    public override Medida Read(ref Utf8JsonReader lector, Type tipo, JsonSerializerOptions opciones)
+    {
+        if (lector.TokenType == JsonTokenType.Number)
+            return Medida.Pixel(lector.GetInt32());
+        if (lector.TokenType == JsonTokenType.String && Medida.TryParse(lector.GetString(), out var medida))
+            return medida;
+        throw new JsonException("Un tamaño es un número de píxeles (800) o un porcentaje (\"60%\").");
+    }
+
+    public override void Write(Utf8JsonWriter escritor, Medida valor, JsonSerializerOptions opciones)
+    {
+        if (valor.Pixeles is { } pixeles)
+            escritor.WriteNumberValue(pixeles);
+        else
+            escritor.WriteStringValue(valor.ToString());
+    }
+}
+
+/// <summary>true, false, o { "lado": "...", "ancho": ..., "alto": ..., "pantalla": ... }.</summary>
+public sealed class WidgetEnEscritorioConverter : JsonConverter<WidgetEnEscritorio>
+{
+    // Sin el atributo del convertidor, para poder leer y escribir el objeto sin recursión.
+    sealed class Datos
+    {
+        [JsonPropertyName("visible")] public bool Visible { get; set; } = true;
+        [JsonPropertyName("ancho")] public int? Ancho { get; set; }
+        [JsonPropertyName("alto")] public int? Alto { get; set; }
+        [JsonPropertyName("lado")] public string? Lado { get; set; }
+        [JsonPropertyName("pantalla"), JsonConverter(typeof(TextoFlexible))] public string? Pantalla { get; set; }
+    }
+
+    public override WidgetEnEscritorio Read(ref Utf8JsonReader lector, Type tipo, JsonSerializerOptions opciones)
+    {
+        switch (lector.TokenType)
+        {
+            case JsonTokenType.True:
+                return new WidgetEnEscritorio();
+            case JsonTokenType.False:
+                return new WidgetEnEscritorio { Visible = false };
+            case JsonTokenType.StartObject:
+                var datos = JsonSerializer.Deserialize<Datos>(ref lector, opciones) ?? new Datos();
+                return new WidgetEnEscritorio
+                {
+                    Visible = datos.Visible, Ancho = datos.Ancho, Alto = datos.Alto, Lado = datos.Lado, Pantalla = datos.Pantalla,
+                };
+            default:
+                throw new JsonException("Un widget de un escritorio es true, false o un objeto con su posición.");
+        }
+    }
+
+    public override void Write(Utf8JsonWriter escritor, WidgetEnEscritorio valor, JsonSerializerOptions opciones)
+    {
+        if (valor.SoloVisibilidad)
+            escritor.WriteBooleanValue(valor.Visible);
+        else
+            JsonSerializer.Serialize(escritor, new Datos
+            {
+                Visible = valor.Visible, Ancho = valor.Ancho, Alto = valor.Alto, Lado = valor.Lado, Pantalla = valor.Pantalla,
+            }, opciones);
     }
 }

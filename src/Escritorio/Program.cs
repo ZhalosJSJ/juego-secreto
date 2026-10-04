@@ -7,6 +7,7 @@ internal static class Program
     /// <param name="args">
     /// --desinstalar: lo usa Configuración → Aplicaciones.
     /// --reemplazar: espera a que se cierre la copia abierta (al instalarse) en lugar de avisar.
+    /// --escritorio &lt;id&gt;: cambia de escritorio («libre» = ninguno). Si la app ya está abierta, se lo pide a esa copia.
     /// </param>
     [STAThread]
     static int Main(string[] args)
@@ -14,6 +15,11 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         if (args.Contains("--desinstalar"))
             return Instalacion.Desinstalar();
+
+        int indice = Array.IndexOf(args, "--escritorio");
+        string? escritorioPedido = indice >= 0 && indice + 1 < args.Length ? args[indice + 1] : null;
+        if (escritorioPedido is not null && Comandos.Enviar("escritorio " + escritorioPedido))
+            return 0;
 
         using var mutex = new Mutex(false, NombreMutex);
         if (!Adquirir(mutex, esperar: args.Contains("--reemplazar")))
@@ -26,7 +32,7 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Registro.Error("Error fatal", e.ExceptionObject as Exception);
         try
         {
-            Application.Run(new Aplicacion());
+            Application.Run(new Aplicacion(escritorioPedido));
             return 0;
         }
         catch (Exception error)

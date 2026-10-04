@@ -13,7 +13,7 @@
     <RootNamespace>Escritorio</RootNamespace>
     <Product>Escritorio</Product>
     <Description>Widgets para el escritorio de Windows 11</Description>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
 
     <!-- Permite compilar desde Linux o macOS; la app corre solo en Windows. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

@@ -11,6 +11,7 @@ public class ConfigPruebas
     {
         var config = Config.PorDefecto();
         Assert.Equal(["gran-sabio", "reloj", "baterias"], config.Widgets.Keys);
+        Assert.Equal(["trabajo", "widgets"], config.Escritorios.Keys);
         Assert.Equal("secundaria", config.Pantalla);
         Assert.Equal("no", config.Widgets["gran-sabio"].Entorno!["NAVEGADOR"]);
     }
@@ -19,7 +20,7 @@ public class ConfigPruebas
     public void IdaYVueltaSinPerderNada()
     {
         var original = Config.PorDefecto();
-        original.Organizar.Reglas.Add(new Regla { Programa = "Discord.exe", Pantalla = "2", X = 10, Y = 20, Ancho = 800, Alto = 600 });
+        original.Organizar.Reglas.Add(new Regla { Programa = "Discord.exe", Pantalla = "2", X = 10, Y = 20, Ancho = 800, Alto = Medida.Porcentaje(50) });
         var texto = JsonSerializer.Serialize(original, Json.Opciones);
         var copia = JsonSerializer.Deserialize<Config>(texto, Json.Opciones)!;
         Assert.Equal(texto, JsonSerializer.Serialize(copia, Json.Opciones));
