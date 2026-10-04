@@ -71,6 +71,15 @@ Qué mirar: ¿aparecieron en la pantalla correcta? ¿Tienen el tamaño esperado 
 3. **Iniciar con Windows**: márquelo, cierre sesión y vuelva a entrar: la app debe arrancar sola.
 4. Para desinstalar: bandeja → Salir, y después Configuración → Aplicaciones → Escritorio → Desinstalar. Debe quitar el acceso del menú Inicio y la carpeta de programa; la configuración queda en `%LOCALAPPDATA%\Escritorio`.
 
+## 10. Reproductor y volúmenes
+
+1. Sin nada sonando, el widget dice «Nada en reproducción» con los botones apagados.
+2. Reproduzca algo en Spotify: deben aparecer título, artista, álbum, carátula y la barra avanzando. Pausa, siguiente y anterior deben funcionar; clic en la barra salta a ese punto.
+3. Reproduzca un video de YouTube en el navegador con Spotify en pausa: debe aparecer un selector con las dos apps; elija cada una.
+4. Pulse ◐ cinco veces: tarjeta → vinilo (el disco gira) → mínimo → portada (carátula de fondo) → neón (ecualizador) → tarjeta. Cierre y abra la app: conserva el último.
+5. Pulse 🔊: lista «General» y los programas con sonido, con ícono y medidor moviéndose. Baje el volumen de Chrome o Discord: debe cambiar solo ese programa (compárelo con el mezclador de Windows). Pruebe silenciar y volver a activar. Esc o ✕ cierra el panel.
+6. En `config.json`, ponga `"opciones": { "diseno": "portada" }` al reproductor, con `"ancho": 300, "alto": 300`, y **Recargar**: debe abrir con ese diseño.
+
 ## Si algo falla
 
 - Errores: `%LOCALAPPDATA%\Escritorio\registro.log`.

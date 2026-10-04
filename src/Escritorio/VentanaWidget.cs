@@ -233,7 +233,7 @@ internal sealed class VentanaWidget : Form
             return;
         if (!string.IsNullOrWhiteSpace(Ajustes.Integrado))
         {
-            Mostrar(new Uri($"https://{Rutas.HostIntegrados}/{Uri.EscapeDataString(Ajustes.Integrado.Trim())}/index.html"));
+            Mostrar(new Uri($"https://{Rutas.HostIntegrados}/{Uri.EscapeDataString(Ajustes.Integrado.Trim())}/index.html{Consulta()}"));
         }
         else if (!string.IsNullOrWhiteSpace(Ajustes.Archivo))
         {
@@ -244,7 +244,7 @@ internal sealed class VentanaWidget : Form
                 return;
             }
             var partes = Path.GetRelativePath(Rutas.WidgetsPropios, ruta).Split(Path.DirectorySeparatorChar);
-            Mostrar(new Uri($"https://{Rutas.HostPropios}/{string.Join('/', partes.Select(Uri.EscapeDataString))}"));
+            Mostrar(new Uri($"https://{Rutas.HostPropios}/{string.Join('/', partes.Select(Uri.EscapeDataString))}{Consulta()}"));
         }
         else if (Uri.TryCreate(Ajustes.Url, UriKind.Absolute, out var url) && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps))
         {
@@ -254,6 +254,14 @@ internal sealed class VentanaWidget : Form
         {
             MostrarAviso("Este widget no tiene «url», «integrado» ni «archivo» en la configuración.");
         }
+    }
+
+    /// <summary>Las «opciones» del widget como parámetros de la dirección: ?diseno=vinilo&amp;otra=valor.</summary>
+    string Consulta()
+    {
+        if (Ajustes.Opciones is null || Ajustes.Opciones.Count == 0)
+            return "";
+        return "?" + string.Join('&', Ajustes.Opciones.Select(o => $"{Uri.EscapeDataString(o.Key)}={Uri.EscapeDataString(o.Value ?? "")}"));
     }
 
     /// <summary>Espera a que la dirección responda; si no responde, inicia su programa (si lo conoce).</summary>
@@ -384,7 +392,7 @@ internal sealed class VentanaWidget : Form
         }
     }
 
-    /// <summary>Solo los widgets incluidos en la app pueden pedirle datos (p. ej. las baterías).</summary>
+    /// <summary>Solo los widgets incluidos en la app pueden pedirle datos o acciones (baterías, reproductor, mezclador).</summary>
     void MensajeRecibido(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         if (!e.Source.StartsWith($"https://{Rutas.HostIntegrados}/", StringComparison.OrdinalIgnoreCase))
@@ -392,10 +400,8 @@ internal sealed class VentanaWidget : Form
         try
         {
             using var mensaje = JsonDocument.Parse(e.WebMessageAsJson);
-            if (mensaje.RootElement.ValueKind == JsonValueKind.Object
-                && mensaje.RootElement.TryGetProperty("pedir", out var pedido)
-                && pedido.ValueKind == JsonValueKind.String)
-                app.Pedido(this, pedido.GetString()!);
+            if (mensaje.RootElement.ValueKind == JsonValueKind.Object)
+                app.Mensaje(this, mensaje.RootElement.Clone());
         }
         catch (JsonException)
         {

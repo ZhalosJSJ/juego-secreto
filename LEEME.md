@@ -1,6 +1,6 @@
 # Escritorio
 
-App nativa para Windows 11 que pone **widgets** en su escritorio, **en la segunda pantalla por defecto**, y **acomoda las ventanas de otros programas** donde usted quiera. Todo se agrupa en **escritorios**: distribuciones con nombre entre las que cambia con un clic. Incluye el **Gran Sabio**, un **reloj** y las **baterías** de sus aparatos Bluetooth.
+App nativa para Windows 11 que pone **widgets** en su escritorio, **en la segunda pantalla por defecto**, y **acomoda las ventanas de otros programas** donde usted quiera. Todo se agrupa en **escritorios**: distribuciones con nombre entre las que cambia con un clic. Incluye el **Gran Sabio**, un **reloj**, las **baterías** de sus aparatos Bluetooth y un **reproductor** con el volumen de cada programa.
 
 Es un solo archivo, `Escritorio.exe`. No necesita instalar Python, .NET ni nada más: trae todo adentro y usa WebView2, que ya viene con Windows 11.
 
@@ -36,7 +36,7 @@ Para mover un widget, arrástrelo desde la franja delgada de su borde superior. 
 
 Un escritorio es una distribución con nombre: qué widgets se ven, cómo se acomodan, y dónde van las ventanas de otros programas. Se cambia desde la bandeja → **Escritorios**. La configuración por defecto trae dos:
 
-- **Trabajo**: los widgets apilados en una columna a la derecha (reloj, baterías y el Gran Sabio ocupando el resto), y Discord a la izquierda llenando todo el espacio que dejan.
+- **Trabajo**: los widgets apilados en una columna a la derecha (reloj, reproductor, baterías y el Gran Sabio ocupando el resto), y Discord a la izquierda llenando todo el espacio que dejan.
 - **Solo widgets**: todos los widgets, apilados a la derecha, sin reglas de ventanas.
 
 **Libre (sin escritorio)** es el modo de siempre: cada widget en su `lado`, y solo las reglas generales.
@@ -50,7 +50,7 @@ Así se escriben en `config.json`:
   "trabajo": {
     "titulo": "Trabajo",
     "apilar": "derecha",
-    "widgets": { "reloj": true, "baterias": true, "gran-sabio": true },
+    "widgets": { "reloj": true, "reproductor": true, "baterias": true, "gran-sabio": true },
     "ventanas": [
       { "programa": "Discord.exe", "lado": "izquierda", "ancho": "100%", "alto": "100%", "abrir": "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Discord Inc\\Discord.lnk" }
     ]
@@ -117,6 +117,22 @@ El widget muestra la batería de este equipo (si es portátil) y la de los apara
 
 Usa el mismo dato que muestra **Configuración → Bluetooth y dispositivos**. Para aparatos Bluetooth LE que no lo publican ahí, lo lee directamente del aparato. Si uno aparece con «sin dato», el aparato no informa su batería a Windows.
 
+## Reproductor y volúmenes
+
+El widget muestra **lo que se esté escuchando**, venga de donde venga: Spotify, YouTube en el navegador, el Reproductor multimedia de Windows… Usa el mismo control que las teclas de reproducción del teclado, así que no hay que configurar nada por app. Trae carátula, progreso (clic en la barra para saltar), anterior/pausa/siguiente, y las teclas **Espacio**, **←** y **→** cuando el widget tiene el foco. Si varias apps suenan a la vez, aparece un selector para elegir cuál mostrar.
+
+Tiene **cinco diseños**; el botón ◐ del widget los va rotando y recuerda el último. También se fija en `config.json` con `"opciones": { "diseno": "vinilo" }`.
+
+| Diseño | Cómo es | Tamaño sugerido |
+|---|---|---|
+| `tarjeta` | Carátula a la izquierda, datos a la derecha, barra y botones debajo. | 340 × 200 |
+| `vinilo` | La carátula es un disco que gira mientras suena; tonos cálidos. | 340 × 200 |
+| `minimo` | Una sola fila: carátula pequeña, título, pausa y siguiente. | 340 × 64 |
+| `portada` | La carátula ocupa todo el fondo y los datos van encima. | 300 × 300 |
+| `neon` | Negro con rosa y cian, fuente monoespaciada y ecualizador animado. | 340 × 200 |
+
+El botón 🔊 abre el **mezclador**: volumen general y un deslizador por programa (con su ícono, silencio y un medidor de nivel), igual que el mezclador de Windows. Las apps que abren varias sesiones de sonido (Chrome) aparecen una sola vez y el cambio se aplica a todas.
+
 ## El Gran Sabio
 
 Aparece a la derecha de la pantalla de los widgets, de arriba abajo.
@@ -145,7 +161,8 @@ Cada widget acepta:
 
 | Clave | Para qué sirve |
 |---|---|
-| `integrado`, `archivo` o `url` | Qué muestra: un widget incluido (`reloj`, `baterias`), un HTML de la carpeta de widgets, o una dirección. |
+| `integrado`, `archivo` o `url` | Qué muestra: un widget incluido (`reloj`, `baterias`, `reproductor`), un HTML de la carpeta de widgets, o una dirección. |
+| `opciones` | Pares nombre-valor que la página del widget recibe en su dirección (`?diseno=vinilo`). Sirve también para widgets propios. |
 | `titulo` | Su nombre. |
 | `ancho`, `alto` | Tamaño en píxeles a escala 100 % (se ajusta solo a la escala de la pantalla). `alto: 0` ocupa todo el alto. |
 | `lado` | Posición inicial: `derecha`, `izquierda`, `centro`, `arriba`, `abajo`, `arriba-derecha`, `arriba-izquierda`, `abajo-derecha`, `abajo-izquierda`. |

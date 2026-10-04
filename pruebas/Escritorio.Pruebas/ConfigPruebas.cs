@@ -7,13 +7,23 @@ namespace Escritorio.Pruebas;
 public class ConfigPruebas
 {
     [Fact]
-    public void LaConfiguracionPorDefectoTraeLosTresWidgets()
+    public void LaConfiguracionPorDefectoTraeLosWidgetsIncluidos()
     {
         var config = Config.PorDefecto();
-        Assert.Equal(["gran-sabio", "reloj", "baterias"], config.Widgets.Keys);
+        Assert.Equal(["gran-sabio", "reloj", "baterias", "reproductor"], config.Widgets.Keys);
         Assert.Equal(["trabajo", "widgets"], config.Escritorios.Keys);
         Assert.Equal("secundaria", config.Pantalla);
         Assert.Equal("no", config.Widgets["gran-sabio"].Entorno!["NAVEGADOR"]);
+        Assert.Equal("tarjeta", config.Widgets["reproductor"].Opciones!["diseno"]);
+    }
+
+    [Fact]
+    public void LasOpcionesDelWidgetSeConservan()
+    {
+        const string texto = """{ "widgets": { "r": { "integrado": "reproductor", "opciones": { "diseno": "vinilo", "otra": "1" } } } }""";
+        var config = JsonSerializer.Deserialize<Config>(texto, Json.Opciones)!;
+        Assert.Equal(("vinilo", "1"), (config.Widgets["r"].Opciones!["diseno"], config.Widgets["r"].Opciones!["otra"]));
+        Assert.Contains("\"opciones\"", JsonSerializer.Serialize(config, Json.Opciones));
     }
 
     [Fact]

@@ -13,6 +13,7 @@
     <Compile Include="../../src/Escritorio/Geometria.cs" Link="App/Geometria.cs" />
     <Compile Include="../../src/Escritorio/Reglas.cs" Link="App/Reglas.cs" />
     <Compile Include="../../src/Escritorio/Config.cs" Link="App/Config.cs" />
+    <Compile Include="../../src/Escritorio/Medios.cs" Link="App/Medios.cs" />
   </ItemGroup>
 
   <ItemGroup>

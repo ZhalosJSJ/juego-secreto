@@ -53,6 +53,15 @@ public sealed class Config
                 Alto = 240,
                 Lado = "abajo-izquierda",
             },
+            ["reproductor"] = new AjustesWidget
+            {
+                Titulo = "Reproductor",
+                Integrado = "reproductor",
+                Ancho = 340,
+                Alto = 200,
+                Lado = "abajo",
+                Opciones = new() { ["diseno"] = "tarjeta" },
+            },
         },
         Escritorios =
         {
@@ -63,6 +72,7 @@ public sealed class Config
                 Widgets = new()
                 {
                     ["reloj"] = new WidgetEnEscritorio(),
+                    ["reproductor"] = new WidgetEnEscritorio(),
                     ["baterias"] = new WidgetEnEscritorio(),
                     ["gran-sabio"] = new WidgetEnEscritorio(),
                 },
@@ -126,6 +136,9 @@ public sealed class AjustesWidget
     /// <summary>Programa que se ejecuta si la url no responde, con estas variables de entorno.</summary>
     [JsonPropertyName("iniciar")] public string? Iniciar { get; set; }
     [JsonPropertyName("entorno")] public Dictionary<string, string>? Entorno { get; set; }
+
+    /// <summary>Opciones para la página del widget: se le pasan en la dirección (?diseno=vinilo).</summary>
+    [JsonPropertyName("opciones")] public Dictionary<string, string>? Opciones { get; set; }
 
     /// <summary>Tamaño en píxeles al 100 % de escala. alto = 0 ocupa todo el alto.</summary>
     [JsonPropertyName("ancho")] public int Ancho { get; set; } = 400;

@@ -17,6 +17,8 @@ internal sealed class Aplicacion : ApplicationContext
     readonly List<VentanaWidget> widgets = new();
     readonly Organizador organizador;
     readonly Baterias baterias;
+    readonly Reproductor reproductor;
+    readonly Mezclador mezclador;
     Dictionary<string, WidgetEfectivo> efectivos = new();
 
     public Config Config { get; private set; }
@@ -45,6 +47,8 @@ internal sealed class Aplicacion : ApplicationContext
 
         organizador = new Organizador(this);
         baterias = new Baterias(this);
+        reproductor = new Reproductor(this);
+        mezclador = new Mezclador(this);
         if (escritorioPedido is not null)
             Estado.Escritorio = IdEscritorio(escritorioPedido);
         AplicarEscritorio();
@@ -213,6 +217,7 @@ internal sealed class Aplicacion : ApplicationContext
             ventana.Show();
         }
         baterias.Activar(widgets.Any(w => w.Ajustes.Integrado == "baterias"));
+        _ = reproductor.Activar(widgets.Any(w => w.Ajustes.Integrado == "reproductor"));
     }
 
     void CerrarWidgets()
@@ -271,12 +276,37 @@ internal sealed class Aplicacion : ApplicationContext
         }
     }
 
-    /// <summary>Un widget incluido pidió datos.</summary>
-    public void Pedido(VentanaWidget ventana, string tema)
+    /// <summary>Un widget incluido pidió datos o una acción. Llega en el hilo de la interfaz.</summary>
+    public void Mensaje(VentanaWidget ventana, JsonElement mensaje)
     {
-        if (tema == "baterias")
-            baterias.Pedir(ventana);
+        if (Texto(mensaje, "pedir") is { } tema)
+        {
+            switch (tema)
+            {
+                case "baterias": baterias.Pedir(ventana); break;
+                case "reproductor": reproductor.Pedir(); break;
+                case "mezclador": mezclador.Enviar(); break;
+            }
+        }
+        if (Texto(mensaje, "accion") is { } accion)
+            _ = reproductor.Accion(accion, Texto(mensaje, "sesion"), Numero(mensaje, "posicion"));
+        if (mensaje.TryGetProperty("volumen", out var volumen) && volumen.ValueKind == JsonValueKind.Object && Texto(volumen, "app") is { } app1)
+        {
+            mezclador.Volumen(app1, Numero(volumen, "nivel"));
+            mezclador.Enviar();
+        }
+        if (mensaje.TryGetProperty("silencio", out var silencio) && silencio.ValueKind == JsonValueKind.Object && Texto(silencio, "app") is { } app2)
+        {
+            mezclador.Silencio(app2, silencio.TryGetProperty("valor", out var valor) && valor.ValueKind == JsonValueKind.True);
+            mezclador.Enviar();
+        }
     }
+
+    static string? Texto(JsonElement objeto, string clave) =>
+        objeto.TryGetProperty(clave, out var valor) && valor.ValueKind == JsonValueKind.String ? valor.GetString() : null;
+
+    static double Numero(JsonElement objeto, string clave) =>
+        objeto.TryGetProperty(clave, out var valor) && valor.ValueKind == JsonValueKind.Number ? valor.GetDouble() : 0;
 
     public void EnviarA(string integrado, string json)
     {
@@ -427,6 +457,8 @@ internal sealed class Aplicacion : ApplicationContext
         SystemEvents.DisplaySettingsChanged -= PantallasCambiaron;
         organizador.Dispose();
         baterias.Dispose();
+        reproductor.Dispose();
+        mezclador.Dispose();
         CerrarWidgets();
         bandeja.Visible = false;
         bandeja.Dispose();
