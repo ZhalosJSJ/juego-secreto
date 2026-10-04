@@ -42,4 +42,3 @@ App nativa para Windows 11 (C# / .NET 10, WinForms + WebView2) que pone widgets 
 - Si existe, revisar el proyecto anterior de baterías del usuario (no se encontró en GitHub, Drive ni artifacts) para igualar su método.
 - Widgets del panel de Windows 11 (Win+W): proveedor con Windows App SDK + Adaptive Cards, empaquetado MSIX. Es otra pieza.
 - Firmar el .exe (evita el aviso de SmartScreen).
-- La versión anterior en Python (`escritorio.py`, `ventanas.py`, `requirements.txt`, `iniciar.bat`, `config.ejemplo.json`, `pruebas/test_ventanas.py`, `widgets/`) quedó reemplazada por esta. Borrarla cuando el usuario lo confirme.
