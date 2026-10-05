@@ -52,13 +52,16 @@ internal sealed class Organizador : IDisposable
             return;
         if (evento == Win32.EVENT_OBJECT_DESTROY)
         {
-            vistas.Remove(hwnd);
+            if (vistas.Remove(hwnd))
+                app.VentanaCerrada(hwnd);
             return;
         }
-        if (!Ajustes.Activo || vistas.Contains(hwnd) || !EsVentanaPrincipal(hwnd))
+        if (vistas.Contains(hwnd) || !EsVentanaPrincipal(hwnd))
             return;
         vistas.Add(hwnd);
-        _ = AplicarEnUnMomento(hwnd);
+        app.VentanaAparecio(hwnd, Proceso(hwnd));
+        if (Ajustes.Activo)
+            _ = AplicarEnUnMomento(hwnd);
     }
 
     async Task AplicarEnUnMomento(IntPtr hwnd)

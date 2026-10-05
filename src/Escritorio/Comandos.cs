@@ -10,6 +10,8 @@ internal sealed class Comandos : Form
 {
     const string TituloVentana = "Escritorio.Comandos";
     const int WM_COPYDATA = 0x004A;
+    const int WM_HOTKEY = 0x0312;
+    const uint MOD_NOREPEAT = 0x4000;
 
     [StructLayout(LayoutKind.Sequential)]
     struct COPYDATASTRUCT
@@ -25,7 +27,38 @@ internal sealed class Comandos : Form
     [DllImport("user32.dll")]
     static extern IntPtr SendMessageW(IntPtr hwnd, int mensaje, IntPtr w, ref COPYDATASTRUCT datos);
 
+    [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modificadores, uint tecla);
+    [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hwnd, int id);
+
+    readonly List<int> atajos = new();
+
     public event Action<string>? Recibido;
+
+    /// <summary>Un atajo global se pulsó; llega el id con el que se registró.</summary>
+    public event Action<int>? Atajo;
+
+    /// <summary>Registra un atajo global. False si otro programa ya lo tiene.</summary>
+    public bool RegistrarAtajo(int id, Teclas.Atajo atajo)
+    {
+        if (!RegisterHotKey(Handle, id, atajo.Modificadores | MOD_NOREPEAT, atajo.Tecla))
+            return false;
+        atajos.Add(id);
+        return true;
+    }
+
+    public void QuitarAtajos()
+    {
+        foreach (var id in atajos)
+            UnregisterHotKey(Handle, id);
+        atajos.Clear();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && IsHandleCreated)
+            QuitarAtajos();
+        base.Dispose(disposing);
+    }
 
     public Comandos()
     {
@@ -39,6 +72,11 @@ internal sealed class Comandos : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == WM_HOTKEY)
+        {
+            Atajo?.Invoke((int)m.WParam);
+            return;
+        }
         if (m.Msg == WM_COPYDATA)
         {
             var datos = Marshal.PtrToStructure<COPYDATASTRUCT>(m.LParam);

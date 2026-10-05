@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Configuración de Escritorio</title>
+  <style>
+    :root { color-scheme: dark; --fondo: #0b1220; --panel: #111b2e; --borde: #22304a; --tinta: #d9e8ff; --tenue: #8fa6c8; --acento: #86e6ff; --sobre-acento: #06101c; --peligro: #ff8a98; --bien: #6ef0be; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { background: var(--fondo); color: var(--tinta); font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; display: grid; grid-template-rows: auto 1fr auto; }
+    nav { display: flex; gap: 2px; padding: 10px 16px 0; border-bottom: 1px solid var(--borde); background: var(--panel); }
+    nav button { font: inherit; color: var(--tenue); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; cursor: pointer; }
+    nav button.activa { color: var(--tinta); border-bottom-color: var(--acento); }
+    main { overflow-y: auto; padding: 16px; scrollbar-width: thin; }
+    section[hidden] { display: none; }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    h3 { font-size: 13px; margin: 14px 0 6px; color: var(--tenue); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+    p.nota { color: var(--tenue); margin: 4px 0 10px; }
+    .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+    .tarjeta header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .tarjeta header .titulo { flex: 1; font-weight: 600; font-size: 14px; }
+    .fila { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; }
+    label.campo { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--tenue); }
+    label.marca { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--tinta); padding-bottom: 6px; }
+    input[type=text], input[type=number], input[type=url], select { font: inherit; color: var(--tinta); background: #0a1322; border: 1px solid var(--borde); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+    input[type=number] { width: 84px; }
+    input[type=text].corto { width: 110px; }
+    input[type=text].medio { width: 180px; }
+    input[type=text].largo { width: 100%; }
+    input[type=color] { width: 36px; height: 29px; padding: 2px; border: 1px solid var(--borde); border-radius: 6px; background: #0a1322; }
+    input[type=range] { accent-color: var(--acento); }
+    input:focus, select:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+    .insignia { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #1a2740; color: var(--tenue); white-space: nowrap; }
+    button.boton { font: inherit; color: var(--tinta); background: #1a2740; border: 1px solid var(--borde); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+    button.boton:hover { background: #22304a; }
+    button.boton.primario { background: var(--acento); color: var(--sobre-acento); border-color: transparent; font-weight: 600; }
+    button.boton.peligro { color: var(--peligro); }
+    button.boton.chico { padding: 2px 7px; font-size: 12px; }
+    .regla { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px 10px; padding: 8px 0; border-top: 1px solid var(--borde); }
+    .regla:first-of-type { border-top: 0; }
+    .regla .acciones { display: flex; align-items: end; justify-content: end; }
+    ul.orden { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    ul.orden li { display: flex; align-items: center; gap: 8px; }
+    ul.orden li .nombre { flex: 1; }
+    footer { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--borde); background: var(--panel); }
+    footer .estado { flex: 1; color: var(--tenue); }
+    footer .estado.ok { color: var(--bien); }
+    footer .estado.error { color: var(--peligro); }
+    code { background: #1a2740; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    .vacio { color: var(--tenue); padding: 10px 0; }
+  </style>
+</head>
+<body>
+  <nav id="pestanas"></nav>
+  <main id="contenido"><p class="vacio">Cargando la configuración…</p></main>
+  <footer>
+    <span class="estado" id="estado"></span>
+    <button class="boton" id="abrirJson" title="Para lo que no esté en este panel">Abrir config.json</button>
+    <button class="boton" id="abrirCarpeta">Carpeta de widgets</button>
+    <button class="boton primario" id="guardar">Guardar y aplicar</button>
+  </footer>
+
+  <script>
+    const puente = window.chrome && window.chrome.webview;
+    const enviar = m => { if (puente) puente.postMessage(m); };
+    let datos = null, config = null;
+    let pestana = localStorage.getItem('pestana') || 'general';
+
+    const PESTANAS = [['general', 'General'], ['widgets', 'Widgets'], ['escritorios', 'Escritorios'], ['ventanas', 'Ventanas'], ['atajos', 'Atajos']];
+    const DESCRIPCION_ATAJO = { alternar: 'Reproducir o pausar', siguiente: 'Siguiente pista', anterior: 'Pista anterior', libre: 'Escritorio libre', configuracion: 'Abrir esta configuración' };
+
+    // ——— Ayudas para armar la página
+    function el(etiqueta, atributos = {}, ...hijos) {
+      const nodo = document.createElement(etiqueta);
+      for (const [k, v] of Object.entries(atributos)) {
+        if (k === 'class') nodo.className = v;
+        else if (k.startsWith('on')) nodo.addEventListener(k.slice(2), v);
+        else if (k === 'checked' || k === 'disabled' || k === 'hidden' || k === 'selected') nodo[k] = !!v;
+        else if (k === 'value') nodo.value = v ?? '';
+        else nodo.setAttribute(k, v);
+      }
+      for (const h of hijos.flat()) if (h !== null && h !== undefined) nodo.append(h.nodeType ? h : document.createTextNode(h));
+      return nodo;
+    }
+    const campo = (texto, control) => el('label', { class: 'campo' }, texto, control);
+    const marca = (texto, checked, oninput) => el('label', { class: 'marca' }, el('input', { type: 'checkbox', checked, onchange: e => oninput(e.target.checked) }), texto);
+    const texto = (valor, oninput, clase = 'medio', extra = {}) => el('input', { type: 'text', class: clase, value: valor ?? '', oninput: e => oninput(e.target.value), ...extra });
+    const numero = (valor, oninput, extra = {}) => el('input', { type: 'number', value: valor ?? '', oninput: e => oninput(e.target.value === '' ? null : Number(e.target.value)), ...extra });
+    function selector(opciones, valor, onchange, vacio) {
+      const s = el('select', { onchange: e => onchange(e.target.value === '' ? null : e.target.value) });
+      if (vacio !== undefined) s.append(el('option', { value: '' }, vacio));
+      const valores = opciones.map(o => String(o.valor));
+      if (valor !== null && valor !== undefined && !valores.includes(String(valor))) s.append(el('option', { value: String(valor) }, String(valor)));
+      for (const o of opciones) s.append(el('option', { value: String(o.valor) }, o.texto));
+      s.value = valor === null || valor === undefined ? '' : String(valor);
+      return s;
+    }
+    const opcionesLados = () => datos.lados.map(l => ({ valor: l, texto: l }));
+    const opcionesPantallas = () => datos.pantallas.map(p => ({ valor: p.valor, texto: p.texto })).concat([{ valor: 'secundaria', texto: 'Secundaria (la primera que no es principal)' }, { valor: 'principal', texto: 'Principal' }].filter(x => !datos.pantallas.some(p => p.valor === x.valor)));
+    const medidaATexto = m => m === null || m === undefined ? '' : String(m);
+    const textoAMedida = t => { t = (t || '').trim(); if (!t) return null; if (/^\d+$/.test(t)) return Number(t); return t; };
+    const normalizarMedida = t => t === '' ? null : t;
+
+    // ——— Pintar
+    function pintar() {
+      const nav = document.getElementById('pestanas');
+      nav.replaceChildren(...PESTANAS.map(([id, nombre]) => el('button', { class: id === pestana ? 'activa' : '', onclick: () => { pestana = id; localStorage.setItem('pestana', id); pintar(); } }, nombre)));
+      const main = document.getElementById('contenido');
+      const desplazamiento = main.scrollTop;
+      main.replaceChildren({ general: pintarGeneral, widgets: pintarWidgets, escritorios: pintarEscritorios, ventanas: pintarVentanas, atajos: pintarAtajos }[pestana]());
+      main.scrollTop = desplazamiento;
+    }
+
+    function pintarGeneral() {
+      const s = el('section');
+      s.append(el('h2', {}, 'General'));
+      s.append(el('div', { class: 'tarjeta' },
+        el('div', { class: 'fila' },
+          campo('Pantalla de los widgets', selector(opcionesPantallas(), config.pantalla, v => config.pantalla = v ?? 'secundaria')),
+          marca('Iniciar con Windows', datos.inicioAutomatico, v => { datos.inicioAutomatico = v; enviar({ inicioAutomatico: v }); }),
+          marca('Acomodar las ventanas nuevas según las reglas', config.organizar.activo, v => config.organizar.activo = v),
+        ),
+        el('p', { class: 'nota' }, datos.instalado ? `Instalado · versión ${datos.version}` : `Sin instalar (se ejecuta desde donde está) · versión ${datos.version}`),
+      ));
+      s.append(el('h3', {}, 'Atenuar al hablar'));
+      s.append(el('div', { class: 'tarjeta' },
+        el('div', { class: 'fila' },
+          marca('Bajar los demás programas mientras se mantiene Espacio sobre…', config.atenuar.activo, v => config.atenuar.activo = v),
+          campo('Widget', selector(Object.keys(config.widgets).map(id => ({ valor: id, texto: config.widgets[id].titulo || id })), config.atenuar.widget, v => config.atenuar.widget = v ?? '')),
+          campo(`Quedan al ${Math.round((config.atenuar.nivel ?? 0.25) * 100)} %`, el('input', { type: 'range', min: 0, max: 100, value: Math.round((config.atenuar.nivel ?? 0.25) * 100), oninput: e => { config.atenuar.nivel = Number(e.target.value) / 100; e.target.parentElement.firstChild.textContent = `Quedan al ${e.target.value} %`; } })),
+        ),
+        el('p', { class: 'nota' }, 'Pensado para el Gran Sabio: al grabar, la música y los juegos bajan; al soltar, vuelven.'),
+      ));
+      return s;
+    }
+
+    function pintarWidgets() {
+      const s = el('section');
+      s.append(el('h2', {}, 'Widgets'));
+      s.append(el('p', { class: 'nota' }, 'Los tamaños van en píxeles a escala 100 %; la app los ajusta a la escala de cada pantalla. Alto 0 = todo el alto disponible.'));
+      for (const [id, w] of Object.entries(config.widgets)) {
+        const tipo = w.integrado ? `Incluido: ${w.integrado}` : w.archivo ? `Archivo: ${w.archivo}` : w.url ? `Dirección: ${w.url}` : 'Sin contenido';
+        const t = el('div', { class: 'tarjeta' },
+          el('header', {},
+            el('input', { type: 'checkbox', checked: w.activo !== false, title: 'Activo', onchange: e => w.activo = e.target.checked }),
+            el('span', { class: 'titulo' }, texto(w.titulo, v => w.titulo = v, 'medio', { placeholder: id })),
+            el('span', { class: 'insignia' }, tipo),
+            el('button', { class: 'boton chico peligro', onclick: () => { if (confirm(`¿Quitar el widget «${w.titulo || id}»?`)) { delete config.widgets[id]; quitarDeEscritorios(id); pintar(); } } }, 'Quitar'),
+          ),
+          el('div', { class: 'fila' },
+            campo('Ancho', numero(w.ancho ?? 400, v => w.ancho = v ?? 400, { min: 100 })),
+            campo('Alto', numero(w.alto ?? 0, v => w.alto = v ?? 0, { min: 0 })),
+            campo('Lado', selector(opcionesLados(), w.lado || 'derecha', v => w.lado = v ?? 'derecha')),
+            campo('Pantalla', selector(opcionesPantallas(), w.pantalla ?? null, v => { if (v === null) delete w.pantalla; else w.pantalla = v; }, 'La de los widgets')),
+            marca('Fijo (sin marco, al fondo)', w.fijo !== false, v => w.fijo = v),
+            campo('Fondo', el('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(w.fondo || '') ? w.fondo : '#0b1220', oninput: e => w.fondo = e.target.value })),
+            w.integrado === 'reproductor' ? campo('Diseño', selector(datos.disenos.map(d => ({ valor: d, texto: d })), (w.opciones || {}).diseno || 'tarjeta', v => { w.opciones = w.opciones || {}; w.opciones.diseno = v ?? 'tarjeta'; })) : null,
+            w.url ? campo('Programa que lo inicia si no responde', texto(w.iniciar, v => w.iniciar = v, 'largo', { placeholder: 'C:\\…\\iniciar.bat' })) : null,
+          ),
+        );
+        s.append(t);
+      }
+      s.append(el('h3', {}, 'Agregar'));
+      const faltan = datos.incluidos.filter(i => !Object.values(config.widgets).some(w => w.integrado === i.integrado));
+      const selIncluido = selector(faltan.map(i => ({ valor: i.id, texto: i.titulo || i.id })), faltan[0] ? faltan[0].id : null, () => {});
+      const archivo = texto('', () => {}, 'medio', { placeholder: 'notas/index.html' });
+      const url = texto('', () => {}, 'medio', { placeholder: 'http://localhost:1234' });
+      s.append(el('div', { class: 'tarjeta' }, el('div', { class: 'fila' },
+        campo('Widget incluido', selIncluido),
+        el('button', { class: 'boton', disabled: faltan.length === 0, onclick: () => { const i = faltan.find(f => f.id === selIncluido.value); if (i) agregarWidget(i.id, { ...i.plantilla }); } }, '+ Agregar'),
+        campo('Widget propio (archivo dentro de la carpeta de widgets)', archivo),
+        el('button', { class: 'boton', onclick: () => { const v = archivo.value.trim(); if (v) agregarWidget(v.split('/')[0].replace(/\W+/g, '-') || 'widget', { titulo: v.split('/')[0], archivo: v, ancho: 320, alto: 240, lado: 'centro' }); } }, '+ Agregar'),
+        campo('Dirección web', url),
+        el('button', { class: 'boton', onclick: () => { const v = url.value.trim(); if (v) agregarWidget('web', { titulo: 'Web', url: v, ancho: 480, alto: 0, lado: 'derecha' }); } }, '+ Agregar'),
+      )));
+      return s;
+    }
+    function agregarWidget(idDeseado, ajustes) {
+      let id = idDeseado; for (let n = 2; config.widgets[id]; n++) id = `${idDeseado}-${n}`;
+      config.widgets[id] = ajustes;
+      pintar();
+    }
+    function quitarDeEscritorios(id) {
+      for (const e of Object.values(config.escritorios)) if (e.widgets && id in e.widgets) delete e.widgets[id];
+      if (config.atenuar.widget === id) config.atenuar.widget = '';
+    }
+
+    function pintarEscritorios() {
+      const s = el('section');
+      s.append(el('h2', {}, 'Escritorios'));
+      s.append(el('p', { class: 'nota' }, 'Cada escritorio dice qué widgets se ven (y en qué orden, si van apilados) y dónde van las ventanas de otros programas. Se cambia desde la bandeja, con su atajo, o solo al abrirse uno de sus programas.'));
+      for (const [id, e] of Object.entries(config.escritorios)) {
+        const todos = !e.widgets;
+        const t = el('div', { class: 'tarjeta' },
+          el('header', {},
+            el('span', { class: 'titulo' }, texto(e.titulo, v => e.titulo = v, 'medio', { placeholder: id })),
+            el('span', { class: 'insignia' }, id === datos.escritorioActual ? 'Activo ahora' : `id: ${id}`),
+            el('button', { class: 'boton chico peligro', onclick: () => { if (confirm(`¿Quitar el escritorio «${e.titulo || id}»?`)) { delete config.escritorios[id]; pintar(); } } }, 'Quitar'),
+          ),
+          el('div', { class: 'fila' },
+            campo('Atajo de teclado', texto(e.atajo, v => e.atajo = v || null, 'corto', { placeholder: 'Ctrl+Alt+1' })),
+            campo('Pantalla de los widgets', selector(opcionesPantallas(), e.pantalla ?? null, v => { if (v === null) delete e.pantalla; else e.pantalla = v; }, 'La general')),
+            campo('Apilar los widgets', selector([{ valor: 'derecha', texto: 'En columna a la derecha' }, { valor: 'izquierda', texto: 'En columna a la izquierda' }], e.apilar ?? null, v => { if (v === null) delete e.apilar; else e.apilar = v; }, 'No: cada uno en su lado')),
+            campo('Se activa solo al abrir (programas separados por coma)', texto((e.activarCon || []).join(', '), v => { const lista = v.split(',').map(x => x.trim()).filter(Boolean); if (lista.length) e.activarCon = lista; else delete e.activarCon; }, 'largo', { placeholder: 'League of Legends.exe, VALORANT-Win64-Shipping.exe' })),
+          ),
+          el('h3', {}, 'Widgets de este escritorio'),
+          marca('Todos los widgets activos, cada uno en su lado', todos, v => { if (v) delete e.widgets; else e.widgets = Object.fromEntries(Object.keys(config.widgets).map(w => [w, true])); pintar(); }),
+          todos ? null : listaOrdenada(e),
+          el('h3', {}, 'Ventanas de otros programas en este escritorio'),
+          tablaReglas(e.ventanas = e.ventanas || []),
+        );
+        s.append(t);
+      }
+      const nuevo = texto('', () => {}, 'corto', { placeholder: 'juego' });
+      s.append(el('div', { class: 'tarjeta' }, el('div', { class: 'fila' },
+        campo('Nuevo escritorio (id corto, sin espacios)', nuevo),
+        el('button', { class: 'boton', onclick: () => { const id = nuevo.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-'); if (!id || config.escritorios[id]) return; config.escritorios[id] = { titulo: nuevo.value.trim(), apilar: 'derecha', ventanas: [] }; pintar(); } }, '+ Crear'),
+      )));
+      return s;
+    }
+    function listaOrdenada(e) {
+      const orden = Object.keys(e.widgets).filter(id => id in config.widgets).concat(Object.keys(config.widgets).filter(id => !(id in e.widgets)));
+      const ul = el('ul', { class: 'orden' });
+      orden.forEach((id, i) => {
+        const entrada = e.widgets[id];
+        const visible = entrada === true || (entrada && typeof entrada === 'object' && entrada.visible !== false);
+        ul.append(el('li', {},
+          el('input', { type: 'checkbox', checked: visible, onchange: ev => {
+            if (ev.target.checked) e.widgets[id] = (entrada && typeof entrada === 'object') ? { ...entrada, visible: true } : true;
+            else delete e.widgets[id];
+            reordenar(e, orden);
+          } }),
+          el('span', { class: 'nombre' }, config.widgets[id].titulo || id),
+          el('button', { class: 'boton chico', disabled: i === 0, onclick: () => { [orden[i - 1], orden[i]] = [orden[i], orden[i - 1]]; reordenar(e, orden); pintar(); } }, '↑'),
+          el('button', { class: 'boton chico', disabled: i === orden.length - 1, onclick: () => { [orden[i + 1], orden[i]] = [orden[i], orden[i + 1]]; reordenar(e, orden); pintar(); } }, '↓'),
+        ));
+      });
+      return ul;
+    }
+    function reordenar(e, orden) {
+      const nuevo = {};
+      for (const id of orden) if (id in e.widgets) nuevo[id] = e.widgets[id];
+      e.widgets = nuevo;
+    }
+
+    function pintarVentanas() {
+      const s = el('section');
+      s.append(el('h2', {}, 'Ventanas de otros programas'));
+      s.append(el('p', { class: 'nota' }, 'Reglas generales: valen en todos los escritorios (las de un escritorio mandan sobre estas). Lo más fácil es usar «Recordar dónde está…» desde la bandeja; aquí se afinan.'));
+      s.append(el('div', { class: 'tarjeta' }, tablaReglas(config.organizar.reglas = config.organizar.reglas || [])));
+      return s;
+    }
+    function tablaReglas(reglas) {
+      const caja = el('div');
+      if (reglas.length === 0) caja.append(el('p', { class: 'vacio' }, 'Sin reglas.'));
+      reglas.forEach((r, i) => caja.append(el('div', { class: 'regla' },
+        campo('Programa (.exe)', texto(r.programa, v => r.programa = v, 'medio', { placeholder: 'Discord.exe' })),
+        campo('Solo si el título contiene', texto(r.titulo, v => r.titulo = v || null)),
+        campo('Pantalla', selector(opcionesPantallas(), r.pantalla ?? 'secundaria', v => r.pantalla = v ?? 'secundaria')),
+        campo('Lado', selector(opcionesLados(), r.lado ?? null, v => r.lado = v, 'Centro')),
+        campo('Ancho (px o %)', texto(medidaATexto(r.ancho), v => r.ancho = textoAMedida(v), 'corto', { placeholder: '100%' })),
+        campo('Alto (px o %)', texto(medidaATexto(r.alto), v => r.alto = textoAMedida(v), 'corto', { placeholder: '100%' })),
+        campo('X exacta', numero(r.x, v => r.x = v)),
+        campo('Y exacta', numero(r.y, v => r.y = v)),
+        marca('Maximizar', !!r.maximizar, v => r.maximizar = v),
+        campo('Abrir al entrar al escritorio (ruta o acceso directo)', texto(r.abrir, v => r.abrir = v || null, 'largo')),
+        el('div', { class: 'acciones' }, el('button', { class: 'boton chico peligro', onclick: () => { reglas.splice(i, 1); pintar(); } }, 'Quitar')),
+      )));
+      caja.append(el('button', { class: 'boton', onclick: () => { reglas.push({ programa: '', pantalla: 'secundaria' }); pintar(); } }, '+ Regla'));
+      return caja;
+    }
+
+    function pintarAtajos() {
+      const s = el('section');
+      s.append(el('h2', {}, 'Atajos de teclado'));
+      s.append(el('p', { class: 'nota' }, 'Valen en todo Windows. Se escriben como ', el('code', {}, 'Ctrl+Alt+P'), ', ', el('code', {}, 'Win+Shift+F5'), ' o ', el('code', {}, 'Ctrl+Espacio'), '. Las letras y números necesitan Ctrl, Alt, Shift o Win. El atajo de cada escritorio se pone en su pestaña.'));
+      const t = el('div', { class: 'tarjeta' });
+      for (const accion of datos.acciones)
+        t.append(el('div', { class: 'fila' }, campo(DESCRIPCION_ATAJO[accion] || accion, texto(config.atajos[accion], v => { if (v.trim()) config.atajos[accion] = v.trim(); else delete config.atajos[accion]; }, 'corto'))));
+      s.append(t);
+      return s;
+    }
+
+    // ——— Guardar
+    function limpiar(objeto) {
+      // Quita nulos y textos vacíos para que config.json quede corto; conserva false y 0.
+      if (Array.isArray(objeto)) return objeto.map(limpiar);
+      if (objeto && typeof objeto === 'object') {
+        const salida = {};
+        for (const [k, v] of Object.entries(objeto)) { const l = limpiar(v); if (l !== null && l !== undefined && l !== '') salida[k] = l; }
+        return salida;
+      }
+      return objeto;
+    }
+    function estado(texto, clase = '') { const e = document.getElementById('estado'); e.textContent = texto; e.className = `estado ${clase}`; }
+    document.getElementById('guardar').addEventListener('click', () => { estado('Guardando…'); enviar({ guardar: limpiar(config) }); });
+    document.getElementById('abrirJson').addEventListener('click', () => enviar({ accion: 'abrirJson' }));
+    document.getElementById('abrirCarpeta').addEventListener('click', () => enviar({ accion: 'abrirCarpeta' }));
+    addEventListener('keydown', e => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); document.getElementById('guardar').click(); } });
+
+    if (puente) puente.addEventListener('message', e => {
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.tipo === 'ajustes') {
+        datos = d; config = d.config;
+        config.widgets = config.widgets || {}; config.escritorios = config.escritorios || {}; config.organizar = config.organizar || { activo: true, reglas: [] };
+        config.atajos = config.atajos || {}; config.atenuar = config.atenuar || { activo: true, widget: 'gran-sabio', nivel: 0.25 };
+        pintar();
+        estado('');
+      } else if (d.tipo === 'guardado') {
+        estado(d.ok ? 'Guardado y aplicado.' : `No se guardó: ${d.error}`, d.ok ? 'ok' : 'error');
+        if (d.ok) enviar({ pedir: 'ajustes' });
+      }
+    });
+    enviar({ pedir: 'ajustes' });
+  </script>
+</body>
+</html>

@@ -83,6 +83,16 @@ Qué mirar: ¿aparecieron en la pantalla correcta? ¿Tienen el tamaño esperado 
 5. Pulse 🔊: lista «General» y los programas con sonido, con ícono y medidor moviéndose. Baje el volumen de Chrome o Discord: debe cambiar solo ese programa (compárelo con el mezclador de Windows). Pruebe silenciar y volver a activar. Esc o ✕ cierra el panel.
 6. En `config.json`, ponga `"opciones": { "diseno": "portada" }` al reproductor, con `"ancho": 300, "alto": 300`, y **Recargar**: debe abrir con ese diseño.
 
+## 11. Configuración, menú Widgets y migración
+
+1. Si venía de una versión anterior: al abrir la nueva, en **Libre** deben aparecer el reproductor y el rendimiento sin tocar nada (la configuración se completa sola; `registro.log` lo anota).
+2. Bandeja → **Widgets**: lista con marca en los visibles. Desmarque el reloj: desaparece. Vuelva a marcarlo: vuelve. En el escritorio «Trabajo», marque el reproductor: debe entrar en la columna.
+3. Bandeja → **Configuración…**: se abre una ventana normal (con marco, en la barra de tareas) en la pantalla donde está el mouse. Cambie el lado del reloj y pulse **Guardar y aplicar**: el reloj se mueve al momento. Pruebe cada pestaña.
+4. En **Atajos**, ponga `Ctrl+Alt+P` en «Reproducir o pausar» y guarde: con Spotify sonando, la combinación debe pausar. Ponga un atajo a un escritorio y pruébelo.
+5. En **Escritorios**, cree «juego» con `activarCon` = `notepad.exe` (para probar) y pantalla principal. Abra el Bloc de notas: debe cambiar a «juego»; ciérrelo: debe volver al escritorio anterior.
+6. **Atenuar**: con música sonando, haga clic en el Gran Sabio y mantenga Espacio: la música baja; al soltar, vuelve. Compruebe en el mezclador de Windows que el volumen de Spotify cambia y se restaura.
+7. **Rendimiento**: el widget muestra CPU, RAM y, con tarjeta NVIDIA, GPU con VRAM y temperatura. Compare con el Administrador de tareas.
+
 ## Si algo falla
 
 - Errores: `%LOCALAPPDATA%\Escritorio\registro.log`.

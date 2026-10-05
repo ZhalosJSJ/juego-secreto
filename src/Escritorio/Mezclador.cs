@@ -37,6 +37,12 @@ internal sealed class Mezclador : IDisposable
     CoreAudio.IAudioMeterInformation? medidorGeneral;
     DateTime dispositivoDesde;
     Guid sinContexto = Guid.Empty;
+    Dictionary<string, float>? atenuados;  // niveles originales mientras se atenúa
+
+    /// <summary>El nombre de proceso de este programa: la voz del Gran Sabio suena aquí y no se atenúa.</summary>
+    static readonly string ClavePropia = ClaveDe(Process.GetCurrentProcess().ProcessName, Environment.ProcessId);
+
+    public bool Atenuando => atenuados is not null;
 
     public Mezclador(Aplicacion app) => this.app = app;
 
@@ -88,6 +94,54 @@ internal sealed class Mezclador : IDisposable
         catch (Exception error)
         {
             Registro.Error($"No se pudo silenciar «{clave}»", error);
+            Soltar();
+        }
+    }
+
+    /// <summary>Baja los demás programas a una fracción de su volumen (0.25 = a un cuarto), recordando el original.</summary>
+    public void Atenuar(double fraccion)
+    {
+        if (atenuados is not null)
+            return;
+        try
+        {
+            var originales = new Dictionary<string, float>();
+            foreach (var programa in Programas(Preparar().gestor!).Values)
+            {
+                if (programa.Clave == Sistema || programa.Clave == ClavePropia)
+                    continue;
+                originales[programa.Clave] = programa.Nivel;
+                float nivel = Medios.Nivel(programa.Nivel * fraccion);
+                foreach (var sesion in programa.Sesiones)
+                    ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(nivel, ref sinContexto);
+            }
+            atenuados = originales;
+        }
+        catch (Exception error)
+        {
+            Registro.Error("No se pudo atenuar el volumen", error);
+            Soltar();
+        }
+    }
+
+    /// <summary>Devuelve a cada programa el volumen que tenía antes de atenuar.</summary>
+    public void Restaurar()
+    {
+        if (atenuados is null)
+            return;
+        var originales = atenuados;
+        atenuados = null;
+        try
+        {
+            var programas = Programas(Preparar().gestor!);
+            foreach (var (clave, nivel) in originales)
+                if (programas.TryGetValue(clave, out var programa))
+                    foreach (var sesion in programa.Sesiones)
+                        ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(nivel, ref sinContexto);
+        }
+        catch (Exception error)
+        {
+            Registro.Error("No se pudo restaurar el volumen", error);
             Soltar();
         }
     }

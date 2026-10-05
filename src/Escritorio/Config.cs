@@ -22,8 +22,25 @@ public sealed class Config
     [JsonPropertyName("escritorios")]
     public Dictionary<string, Escritorio> Escritorios { get; set; } = new();
 
+    /// <summary>Atajos de teclado globales: «alternar», «siguiente», «anterior», «libre», «configuracion» → tecla («Ctrl+Alt+P»).</summary>
+    [JsonPropertyName("atajos")]
+    public Dictionary<string, string> Atajos { get; set; } = new();
+
+    /// <summary>Bajar el volumen de los demás programas mientras se le habla a un widget (Espacio sobre el Gran Sabio).</summary>
+    [JsonPropertyName("atenuar")]
+    public AjustesAtenuar Atenuar { get; set; } = new();
+
+    /// <summary>Versión del formato de este archivo: al subir, se agregan los widgets incluidos que falten.</summary>
+    [JsonPropertyName("formato")]
+    public int Formato { get; set; }
+
+    public const int FormatoActual = 2;
+
+    public static readonly string[] AccionesDeAtajo = ["alternar", "siguiente", "anterior", "libre", "configuracion"];
+
     public static Config PorDefecto() => new()
     {
+        Formato = FormatoActual,
         Widgets =
         {
             ["gran-sabio"] = new AjustesWidget
@@ -62,6 +79,14 @@ public sealed class Config
                 Lado = "abajo",
                 Opciones = new() { ["diseno"] = "tarjeta" },
             },
+            ["rendimiento"] = new AjustesWidget
+            {
+                Titulo = "Rendimiento",
+                Integrado = "rendimiento",
+                Ancho = 300,
+                Alto = 150,
+                Lado = "arriba",
+            },
         },
         Escritorios =
         {
@@ -72,6 +97,7 @@ public sealed class Config
                 Widgets = new()
                 {
                     ["reloj"] = new WidgetEnEscritorio(),
+                    ["rendimiento"] = new WidgetEnEscritorio(),
                     ["reproductor"] = new WidgetEnEscritorio(),
                     ["baterias"] = new WidgetEnEscritorio(),
                     ["gran-sabio"] = new WidgetEnEscritorio(),
@@ -88,6 +114,37 @@ public sealed class Config
             },
         },
     };
+
+    /// <summary>
+    /// Pone al día una configuración de una versión anterior: agrega los widgets incluidos que no
+    /// tenga (una sola vez, según «formato»). Devuelve true si cambió algo y hay que guardarla.
+    /// </summary>
+    public bool Completar()
+    {
+        if (Formato >= FormatoActual)
+            return false;
+        foreach (var (id, plantilla) in IncluidosQueFaltan())
+            Widgets[IdLibre(id)] = plantilla;
+        Formato = FormatoActual;
+        return true;
+    }
+
+    /// <summary>Los widgets incluidos en la app que todavía no están en esta configuración, con su plantilla.</summary>
+    public IEnumerable<(string Id, AjustesWidget Plantilla)> IncluidosQueFaltan() =>
+        PorDefecto().Widgets
+            .Where(p => p.Value.Integrado is not null && !Widgets.Values.Any(w => w.Integrado == p.Value.Integrado))
+            .Select(p => (p.Key, p.Value))
+            .ToList();
+
+    /// <summary>Un id de widget que no exista todavía: «reloj», «reloj-2», «reloj-3»…</summary>
+    public string IdLibre(string deseado)
+    {
+        if (!Widgets.ContainsKey(deseado))
+            return deseado;
+        for (int n = 2; ; n++)
+            if (!Widgets.ContainsKey($"{deseado}-{n}"))
+                return $"{deseado}-{n}";
+    }
 
     /// <summary>
     /// Los widgets que se ven en un escritorio, en orden, con sus ajustes de posición ya aplicados.
@@ -174,7 +231,26 @@ public sealed class Escritorio
     /// <summary>Reglas de ventanas propias de este escritorio; mandan sobre las generales.</summary>
     [JsonPropertyName("ventanas")] public List<Regla> Ventanas { get; set; } = new();
 
+    /// <summary>Atajo de teclado para cambiar a este escritorio («Ctrl+Alt+1»).</summary>
+    [JsonPropertyName("atajo")] public string? Atajo { get; set; }
+
+    /// <summary>Programas que, al abrir su ventana, activan este escritorio; al cerrarse, se vuelve al anterior.</summary>
+    [JsonPropertyName("activarCon")] public List<string>? ActivarCon { get; set; }
+
     public string Nombre(string id) => string.IsNullOrWhiteSpace(Titulo) ? id : Titulo!;
+
+    public bool SeActivaCon(string proceso) =>
+        ActivarCon is not null && ActivarCon.Any(p => string.Equals(Reglas.NormalizarPrograma(p), Reglas.NormalizarPrograma(proceso), StringComparison.OrdinalIgnoreCase));
+}
+
+/// <summary>Mientras se mantiene Espacio sobre un widget (el Gran Sabio), los demás programas suenan más bajo.</summary>
+public sealed class AjustesAtenuar
+{
+    [JsonPropertyName("activo")] public bool Activo { get; set; } = true;
+    [JsonPropertyName("widget")] public string Widget { get; set; } = "gran-sabio";
+
+    /// <summary>A qué fracción de su volumen quedan los demás (0.25 = a un cuarto).</summary>
+    [JsonPropertyName("nivel")] public double Nivel { get; set; } = 0.25;
 }
 
 /// <summary>Cómo se ve un widget dentro de un escritorio. En el JSON puede ser true, false o un objeto.</summary>

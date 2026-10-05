@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Rendimiento</title>
+  <style>
+    :root { color-scheme: dark; --fondo: #0b1220; --tinta: #d9e8ff; --tenue: #8fa6c8; --pista: #1a2740; --bien: #6ef0be; --medio: #ffc46b; --alto: #ff8a98; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--fondo); color: var(--tinta); font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      padding: 12px 16px; box-sizing: border-box; cursor: default; user-select: none; display: flex; flex-direction: column; gap: 10px; justify-content: center;
+    }
+    .fila { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 4px; }
+    .fila[hidden] { display: none; }
+    .nombre { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+    .detalle { color: var(--tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+    .valor { font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; }
+    .barra { grid-column: 1 / 4; height: 4px; border-radius: 2px; background: var(--pista); overflow: hidden; }
+    .barra i { display: block; height: 100%; width: 0; border-radius: 2px; background: var(--bien); transition: width .5s, background .5s; }
+    .medio .barra i { background: var(--medio); }
+    .alto .barra i { background: var(--alto); }
+    .alto .valor { color: var(--alto); }
+    .vacio { color: var(--tenue); text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="fila" id="cpu"><span class="nombre">CPU</span><span class="detalle">Procesador</span><span class="valor">—</span><div class="barra"><i></i></div></div>
+  <div class="fila" id="ram"><span class="nombre">RAM</span><span class="detalle">—</span><span class="valor">—</span><div class="barra"><i></i></div></div>
+  <div class="fila" id="gpu" hidden><span class="nombre">GPU</span><span class="detalle">—</span><span class="valor">—</span><div class="barra"><i></i></div></div>
+  <p class="vacio" id="vacio">Midiendo…</p>
+
+  <script>
+    const puente = window.chrome && window.chrome.webview;
+    const gb = bytes => (bytes / 1073741824).toFixed(1);
+
+    function pintar(id, porcentaje, detalle, valor) {
+      const fila = document.getElementById(id);
+      fila.hidden = false;
+      fila.className = 'fila' + (porcentaje >= 90 ? ' alto' : porcentaje >= 70 ? ' medio' : '');
+      fila.querySelector('.detalle').textContent = detalle;
+      fila.querySelector('.valor').textContent = valor;
+      fila.querySelector('.barra i').style.width = `${Math.max(0, Math.min(100, porcentaje || 0))}%`;
+    }
+
+    function recibir(d) {
+      document.getElementById('vacio').hidden = true;
+      if (Number.isFinite(d.cpu)) pintar('cpu', d.cpu, 'Procesador', `${d.cpu} %`);
+      if (d.ram) {
+        const uso = (d.ram.usada / d.ram.total) * 100;
+        pintar('ram', uso, `${gb(d.ram.usada)} de ${gb(d.ram.total)} GB`, `${Math.round(uso)} %`);
+      }
+      if (d.gpu) {
+        // El nombre completo va en el título; en la fila, lo que cambia: VRAM y temperatura.
+        const partes = [];
+        if (d.gpu.vram) partes.push(`VRAM ${gb(d.gpu.vram.usada)} de ${gb(d.gpu.vram.total)} GB`);
+        if (d.gpu.temperatura) partes.push(`${d.gpu.temperatura} °C`);
+        const nombre = (d.gpu.nombre || 'GPU').replace(/^NVIDIA (GeForce )?/i, '');
+        pintar('gpu', d.gpu.uso, partes.join(' · ') || nombre, `${d.gpu.uso} %`);
+        document.getElementById('gpu').title = d.gpu.nombre || '';
+      } else {
+        document.getElementById('gpu').hidden = true;
+      }
+    }
+
+    if (puente) puente.addEventListener('message', e => { if (e.data && e.data.tipo === 'rendimiento') recibir(e.data); });
+    if (puente) puente.postMessage({ pedir: 'rendimiento' });
+  </script>
+</body>
+</html>

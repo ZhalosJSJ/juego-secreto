@@ -10,11 +10,52 @@ public class ConfigPruebas
     public void LaConfiguracionPorDefectoTraeLosWidgetsIncluidos()
     {
         var config = Config.PorDefecto();
-        Assert.Equal(["gran-sabio", "reloj", "baterias", "reproductor"], config.Widgets.Keys);
+        Assert.Equal(["gran-sabio", "reloj", "baterias", "reproductor", "rendimiento"], config.Widgets.Keys);
+        Assert.Equal(Config.FormatoActual, config.Formato);
         Assert.Equal(["trabajo", "widgets"], config.Escritorios.Keys);
         Assert.Equal("secundaria", config.Pantalla);
         Assert.Equal("no", config.Widgets["gran-sabio"].Entorno!["NAVEGADOR"]);
         Assert.Equal("tarjeta", config.Widgets["reproductor"].Opciones!["diseno"]);
+    }
+
+    [Fact]
+    public void UnaConfiguracionViejaRecibeLosWidgetsNuevosUnaSolaVez()
+    {
+        // Como la que creó la versión 0.3: sin reproductor ni rendimiento, y sin «formato».
+        const string texto = """{ "widgets": { "reloj": { "integrado": "reloj" }, "mio": { "archivo": "mio/index.html" } } }""";
+        var config = JsonSerializer.Deserialize<Config>(texto, Json.Opciones)!;
+        Assert.Equal(0, config.Formato);
+        Assert.Equal(["baterias", "reproductor", "rendimiento"], config.IncluidosQueFaltan().Select(f => f.Id));
+
+        Assert.True(config.Completar());
+        Assert.Equal(["reloj", "mio", "baterias", "reproductor", "rendimiento"], config.Widgets.Keys);
+        Assert.Equal(Config.FormatoActual, config.Formato);
+        Assert.Empty(config.IncluidosQueFaltan());
+
+        // Si después el usuario quita uno, no se vuelve a agregar.
+        config.Widgets.Remove("rendimiento");
+        Assert.False(config.Completar());
+        Assert.DoesNotContain("rendimiento", config.Widgets.Keys);
+    }
+
+    [Fact]
+    public void IdLibreNoPisaLosExistentes()
+    {
+        var config = Config.PorDefecto();
+        Assert.Equal("notas", config.IdLibre("notas"));
+        Assert.Equal("reloj-2", config.IdLibre("reloj"));
+        config.Widgets["reloj-2"] = new AjustesWidget();
+        Assert.Equal("reloj-3", config.IdLibre("reloj"));
+    }
+
+    [Fact]
+    public void ElEscritorioSeActivaConSusProgramas()
+    {
+        var escritorio = new Escritorio { ActivarCon = ["League of Legends.exe", "VALORANT-Win64-Shipping"] };
+        Assert.True(escritorio.SeActivaCon("League of Legends"));
+        Assert.True(escritorio.SeActivaCon("valorant-win64-shipping.exe"));
+        Assert.False(escritorio.SeActivaCon("Discord"));
+        Assert.False(new Escritorio().SeActivaCon("Discord"));
     }
 
     [Fact]

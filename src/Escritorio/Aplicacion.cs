@@ -19,7 +19,16 @@ internal sealed class Aplicacion : ApplicationContext
     readonly Baterias baterias;
     readonly Reproductor reproductor;
     readonly Mezclador mezclador;
+    readonly Rendimiento rendimiento;
+    readonly System.Windows.Forms.Timer atenuador = new() { Interval = 80 };
+    readonly Dictionary<int, Action> accionesDeAtajo = new();
     Dictionary<string, WidgetEfectivo> efectivos = new();
+    VentanaWidget? ventanaAjustes;
+    bool atenuando;
+    // Escritorio automático: a cuál volver cuando se cierre la ventana que lo activó.
+    IntPtr ventanaDisparadora;
+    bool volverPendiente;
+    string? escritorioAnterior;
 
     public Config Config { get; private set; }
     public Estado Estado { get; private set; }
@@ -34,9 +43,16 @@ internal sealed class Aplicacion : ApplicationContext
         Rutas.ExtraerIntegrados();
         Icono = CargarIcono();
         Config = CargarConfig();
+        if (Config.Completar())
+        {
+            GuardarConfig();
+            Registro.Info("Configuración puesta al día: se agregaron los widgets incluidos que faltaban");
+        }
         Estado = CargarEstado();
         EntornoWeb = CoreWebView2Environment.CreateAsync(null, Rutas.WebView);
         comandos.Recibido += Ejecutar;
+        comandos.Atajo += id => { if (accionesDeAtajo.TryGetValue(id, out var accion)) accion(); };
+        atenuador.Tick += (_, _) => RevisarAtenuacion();
 
         bandeja = new NotifyIcon { Icon = Icono, Text = "Escritorio", ContextMenuStrip = menu, Visible = true };
         menu.Opening += (_, e) =>
@@ -49,10 +65,13 @@ internal sealed class Aplicacion : ApplicationContext
         baterias = new Baterias(this);
         reproductor = new Reproductor(this);
         mezclador = new Mezclador(this);
+        rendimiento = new Rendimiento(this);
         if (escritorioPedido is not null)
             Estado.Escritorio = IdEscritorio(escritorioPedido);
         AplicarEscritorio();
         organizador.Iniciar();
+        RegistrarAtajos();
+        atenuador.Start();
         if (escritorioPedido is not null && EscritorioActual is not null)
             organizador.AlEntrarA(EscritorioActual);
         SystemEvents.DisplaySettingsChanged += PantallasCambiaron;
@@ -155,6 +174,110 @@ internal sealed class Aplicacion : ApplicationContext
             CambiarEscritorio(IdEscritorio(orden[prefijo.Length..]));
         else if (orden == "salir")
             Salir();
+        else if (orden == "configuracion")
+            AbrirAjustes();
+    }
+
+    // --- Escritorio automático: al abrirse un programa de «activarCon» ---
+
+    /// <summary>El organizador vio aparecer una ventana principal (en el hilo de la interfaz).</summary>
+    public void VentanaAparecio(IntPtr hwnd, string proceso)
+    {
+        if (string.IsNullOrEmpty(proceso))
+            return;
+        foreach (var (id, escritorio) in Config.Escritorios)
+        {
+            if (!escritorio.SeActivaCon(proceso))
+                continue;
+            if (id == EscritorioActualId)
+            {
+                if (ventanaDisparadora == IntPtr.Zero)
+                    ventanaDisparadora = hwnd;
+                return;
+            }
+            escritorioAnterior = Estado.Escritorio;
+            volverPendiente = true;
+            ventanaDisparadora = hwnd;
+            // Fuera del aviso de Windows, con calma.
+            comandos.BeginInvoke(() => CambiarEscritorio(id));
+            return;
+        }
+    }
+
+    /// <summary>Se cerró una ventana: si era la que activó un escritorio, se vuelve al anterior.</summary>
+    public void VentanaCerrada(IntPtr hwnd)
+    {
+        if (hwnd != ventanaDisparadora)
+            return;
+        ventanaDisparadora = IntPtr.Zero;
+        if (!volverPendiente)
+            return;
+        volverPendiente = false;
+        var volverA = escritorioAnterior;
+        escritorioAnterior = null;
+        comandos.BeginInvoke(() => CambiarEscritorio(volverA));
+    }
+
+    // --- Atajos de teclado globales ---
+
+    void RegistrarAtajos()
+    {
+        comandos.QuitarAtajos();
+        accionesDeAtajo.Clear();
+        int id = 1;
+        void Registrar(string? texto, string nombre, Action accion)
+        {
+            if (string.IsNullOrWhiteSpace(texto))
+                return;
+            if (!Teclas.TryParse(texto, out var atajo, out var error))
+            {
+                Registro.Error($"Atajo «{texto}» de {nombre}: {error}");
+                return;
+            }
+            if (!comandos.RegistrarAtajo(id, atajo))
+            {
+                Registro.Error($"El atajo «{texto}» de {nombre} ya lo usa otro programa");
+                return;
+            }
+            accionesDeAtajo[id++] = accion;
+        }
+        foreach (var (accion, texto) in Config.Atajos)
+        {
+            Action? hacer = accion switch
+            {
+                "alternar" => () => _ = reproductor.Accion("alternar", null, 0),
+                "siguiente" => () => _ = reproductor.Accion("siguiente", null, 0),
+                "anterior" => () => _ = reproductor.Accion("anterior", null, 0),
+                "libre" => () => CambiarEscritorio(null),
+                "configuracion" => AbrirAjustes,
+                _ => null,
+            };
+            if (hacer is null)
+                Registro.Error($"Acción de atajo desconocida: «{accion}» (valen: {string.Join(", ", Config.AccionesDeAtajo)})");
+            else
+                Registrar(texto, $"«{accion}»", hacer);
+        }
+        foreach (var (idEscritorio, escritorio) in Config.Escritorios)
+            Registrar(escritorio.Atajo, $"el escritorio «{escritorio.Nombre(idEscritorio)}»", () => CambiarEscritorio(idEscritorio));
+    }
+
+    // --- Atenuar al hablar: mientras se mantiene Espacio sobre el widget elegido ---
+
+    void RevisarAtenuacion()
+    {
+        var ajustes = Config.Atenuar;
+        var widget = ajustes.Activo ? widgets.FirstOrDefault(w => w.Id == ajustes.Widget) : null;
+        bool hablando = widget is { IsDisposed: false } && Form.ActiveForm == widget && (Win32.GetAsyncKeyState(Win32.VK_SPACE) & 0x8000) != 0;
+        if (hablando && !atenuando)
+        {
+            mezclador.Atenuar(Math.Clamp(ajustes.Nivel, 0, 1));
+            atenuando = true;
+        }
+        else if (!hablando && atenuando)
+        {
+            mezclador.Restaurar();
+            atenuando = false;
+        }
     }
 
     // --- Widgets ---
@@ -221,7 +344,9 @@ internal sealed class Aplicacion : ApplicationContext
             ventana.Show();
         }
         baterias.Activar(widgets.Any(w => w.Ajustes.Integrado == "baterias"));
-        _ = reproductor.Activar(widgets.Any(w => w.Ajustes.Integrado == "reproductor"));
+        bool atajosDeMusica = Config.Atajos.Keys.Any(k => k is "alternar" or "siguiente" or "anterior");
+        _ = reproductor.Activar(atajosDeMusica || widgets.Any(w => w.Ajustes.Integrado == "reproductor"));
+        rendimiento.Activar(widgets.Any(w => w.Ajustes.Integrado == "rendimiento"));
     }
 
     void CerrarWidgets()
@@ -235,6 +360,8 @@ internal sealed class Aplicacion : ApplicationContext
     /// <summary>El usuario soltó un widget: se recuerda dónde, relativo a la pantalla del widget.</summary>
     public void PosicionCambiada(VentanaWidget ventana)
     {
+        if (!efectivos.ContainsKey(ventana.Id))
+            return;  // la ventana de configuración y similares no guardan posición
         var pantallas = Pantallas.Listar();
         var pantalla = efectivos.GetValueOrDefault(ventana.Id)?.Pantalla is { } propia
             ? Geometria.ElegirPantalla(pantallas, propia)
@@ -290,10 +417,26 @@ internal sealed class Aplicacion : ApplicationContext
                 case "baterias": baterias.Pedir(ventana); break;
                 case "reproductor": reproductor.Pedir(); break;
                 case "mezclador": mezclador.Enviar(); break;
+                case "rendimiento": rendimiento.Pedir(); break;
+                case "ajustes": EnviarAjustes(ventana); break;
             }
         }
         if (Texto(mensaje, "accion") is { } accion)
-            _ = reproductor.Accion(accion, Texto(mensaje, "sesion"), Numero(mensaje, "posicion"));
+        {
+            switch (accion)
+            {
+                case "abrirJson": Abrir(Rutas.Config); break;
+                case "abrirCarpeta": Abrir(Rutas.WidgetsPropios); break;
+                default: _ = reproductor.Accion(accion, Texto(mensaje, "sesion"), Numero(mensaje, "posicion")); break;
+            }
+        }
+        if (mensaje.TryGetProperty("guardar", out var guardar) && guardar.ValueKind == JsonValueKind.Object)
+            GuardarDesdeAjustes(ventana, guardar);
+        if (mensaje.TryGetProperty("inicioAutomatico", out var inicio) && inicio.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            if ((inicio.ValueKind == JsonValueKind.True) != Instalacion.InicioAutomatico)
+                Instalacion.AlternarInicioAutomatico();
+        }
         if (mensaje.TryGetProperty("volumen", out var volumen) && volumen.ValueKind == JsonValueKind.Object && Texto(volumen, "app") is { } app1)
         {
             mezclador.Volumen(app1, Numero(volumen, "nivel"));
@@ -304,6 +447,160 @@ internal sealed class Aplicacion : ApplicationContext
             mezclador.Silencio(app2, silencio.TryGetProperty("valor", out var valor) && valor.ValueKind == JsonValueKind.True);
             mezclador.Enviar();
         }
+    }
+
+    // --- Ventana de configuración ---
+
+    void AbrirAjustes()
+    {
+        if (ventanaAjustes is { IsDisposed: false })
+        {
+            ventanaAjustes.Activate();
+            return;
+        }
+        var ajustes = new AjustesWidget { Titulo = "Configuración de Escritorio", Integrado = "ajustes", Fijo = false, Ancho = 800, Alto = 640 };
+        // Donde está el usuario (la pantalla del mouse), centrada.
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        var trabajo = new Rect(area.X, area.Y, area.Width, area.Height);
+        var rect = Geometria.Posicionar(trabajo, Math.Min(800, area.Width - 40), Math.Min(640, area.Height - 40), "centro", 0);
+        ventanaAjustes = new VentanaWidget(this, "ajustes", ajustes, rect, bloqueado: true);
+        ventanaAjustes.FormClosed += (_, _) => ventanaAjustes = null;
+        ventanaAjustes.Show();
+        ventanaAjustes.Activate();
+    }
+
+    void EnviarAjustes(VentanaWidget ventana)
+    {
+        var pantallas = Geometria.Ordenar(Pantallas.Listar());
+        var json = JsonSerializer.Serialize(new
+        {
+            tipo = "ajustes",
+            config = Config,
+            pantallas = pantallas.Select((p, i) => new { valor = Geometria.Describir(p, pantallas), texto = $"Pantalla {i + 1}" + (p.Principal ? " (principal)" : "") }),
+            inicioAutomatico = Instalacion.InicioAutomatico,
+            instalado = Instalacion.EstaInstalado,
+            version = Instalacion.Version,
+            incluidos = Config.PorDefecto().Widgets.Where(w => w.Value.Integrado is not null).Select(w => new { id = w.Key, integrado = w.Value.Integrado, titulo = w.Value.Titulo, plantilla = w.Value }),
+            escritorioActual = EscritorioActualId,
+            lados = Geometria.Lados,
+            disenos = new[] { "tarjeta", "vinilo", "minimo", "portada", "neon" },
+            acciones = Config.AccionesDeAtajo,
+        }, Json.Opciones);
+        ventana.Enviar(json);
+    }
+
+    void GuardarDesdeAjustes(VentanaWidget ventana, JsonElement guardar)
+    {
+        try
+        {
+            var nueva = JsonSerializer.Deserialize<Config>(guardar.GetRawText(), Json.Opciones) ?? throw new JsonException("La configuración llegó vacía.");
+            foreach (var (accion, texto) in nueva.Atajos)
+                if (!string.IsNullOrWhiteSpace(texto) && !Teclas.TryParse(texto, out _, out var error))
+                    throw new JsonException($"Atajo de «{accion}»: {error}");
+            foreach (var (id, escritorio) in nueva.Escritorios)
+                if (!string.IsNullOrWhiteSpace(escritorio.Atajo) && !Teclas.TryParse(escritorio.Atajo, out _, out var error))
+                    throw new JsonException($"Atajo del escritorio «{escritorio.Nombre(id)}»: {error}");
+            nueva.Formato = Config.FormatoActual;
+            Config = nueva;
+            GuardarConfig();
+            AplicarConfigNueva();
+            ventana.Enviar(JsonSerializer.Serialize(new { tipo = "guardado", ok = true }));
+        }
+        catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException)
+        {
+            Registro.Error("No se pudo guardar la configuración desde la ventana de ajustes", error);
+            ventana.Enviar(JsonSerializer.Serialize(new { tipo = "guardado", ok = false, error = error.Message }));
+        }
+    }
+
+    /// <summary>Tras cambiar la configuración en memoria: se rehacen los widgets y los atajos.</summary>
+    void AplicarConfigNueva()
+    {
+        CerrarWidgets();
+        AplicarEscritorio();
+        RegistrarAtajos();
+    }
+
+    // --- Menú «Widgets» ---
+
+    ToolStripMenuItem CrearMenuWidgets()
+    {
+        var raiz = new ToolStripMenuItem("Widgets");
+        var escritorio = EscritorioActual;
+        foreach (var (id, ajustes) in Config.Widgets)
+        {
+            var nombre = string.IsNullOrWhiteSpace(ajustes.Titulo) ? id : ajustes.Titulo!;
+            raiz.DropDownItems.Add(new ToolStripMenuItem(Recortar(nombre), null, (_, _) => AlternarWidget(id)) { Checked = efectivos.ContainsKey(id) });
+        }
+        var faltan = Config.IncluidosQueFaltan().ToList();
+        raiz.DropDownItems.Add(new ToolStripSeparator());
+        if (faltan.Count > 0)
+        {
+            var agregar = new ToolStripMenuItem("Agregar widget incluido");
+            foreach (var (id, plantilla) in faltan)
+                agregar.DropDownItems.Add(plantilla.Nombre, null, (_, _) => AgregarWidget(id, plantilla));
+            raiz.DropDownItems.Add(agregar);
+        }
+        raiz.DropDownItems.Add("Agregar widget propio…", null, (_, _) => AgregarWidgetPropio());
+        if (escritorio?.Widgets is not null)
+            raiz.DropDownItems.Add(new ToolStripMenuItem($"Marcados: los que se ven en «{escritorio.Nombre(EscritorioActualId!)}»") { Enabled = false });
+        return raiz;
+    }
+
+    /// <summary>Muestra u oculta un widget: en un escritorio con lista propia, en esa lista; si no, en la configuración general.</summary>
+    void AlternarWidget(string id)
+    {
+        if (!Config.Widgets.TryGetValue(id, out var ajustes))
+            return;
+        var escritorio = EscritorioActual;
+        if (escritorio?.Widgets is not null)
+        {
+            if (escritorio.Widgets.TryGetValue(id, out var enEscritorio))
+                enEscritorio.Visible = !enEscritorio.Visible;
+            else
+                escritorio.Widgets[id] = new WidgetEnEscritorio();
+            if (escritorio.Widgets[id].Visible)
+                ajustes.Activo = true;
+        }
+        else
+        {
+            ajustes.Activo = !ajustes.Activo;
+        }
+        GuardarConfig();
+        AplicarEscritorio();
+    }
+
+    void AgregarWidget(string idDeseado, AjustesWidget ajustes)
+    {
+        var id = Config.IdLibre(idDeseado);
+        Config.Widgets[id] = ajustes;
+        if (EscritorioActual?.Widgets is { } lista)
+            lista[id] = new WidgetEnEscritorio();
+        GuardarConfig();
+        AplicarEscritorio();
+        Avisar($"Se agregó el widget «{ajustes.Nombre}». Ajústelo en Configuración…");
+    }
+
+    void AgregarWidgetPropio()
+    {
+        using var dialogo = new OpenFileDialog
+        {
+            Title = "Elija el index.html de su widget (dentro de la carpeta de widgets)",
+            InitialDirectory = Rutas.WidgetsPropios,
+            Filter = "Páginas (*.html; *.htm)|*.html;*.htm",
+        };
+        if (dialogo.ShowDialog() != DialogResult.OK)
+            return;
+        var carpeta = Path.GetFullPath(Rutas.WidgetsPropios) + Path.DirectorySeparatorChar;
+        var ruta = Path.GetFullPath(dialogo.FileName);
+        if (!ruta.StartsWith(carpeta, StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show($"El widget tiene que estar dentro de la carpeta de widgets:\n{Rutas.WidgetsPropios}", "Escritorio", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var relativa = Path.GetRelativePath(Rutas.WidgetsPropios, ruta).Replace(Path.DirectorySeparatorChar, '/');
+        var nombre = relativa.Contains('/') ? relativa[..relativa.IndexOf('/')] : Path.GetFileNameWithoutExtension(relativa);
+        AgregarWidget(nombre.ToLowerInvariant(), new AjustesWidget { Titulo = nombre, Archivo = relativa, Ancho = 320, Alto = 240, Lado = "centro" });
     }
 
     static string? Texto(JsonElement objeto, string clave) =>
@@ -351,6 +648,8 @@ internal sealed class Aplicacion : ApplicationContext
         if (Config.Escritorios.Count == 0)
             escritorios.DropDownItems.Add(new ToolStripMenuItem("Agregue escritorios en config.json") { Enabled = false });
         menu.Items.Add(escritorios);
+        menu.Items.Add(CrearMenuWidgets());
+        menu.Items.Add("Configuración…", null, (_, _) => AbrirAjustes());
         menu.Items.Add(new ToolStripSeparator());
 
         var pantallas = Geometria.Ordenar(Pantallas.Listar());
@@ -378,7 +677,7 @@ internal sealed class Aplicacion : ApplicationContext
         });
         if (!Instalacion.EstaInstalado)
             menu.Items.Add("Instalar en este equipo", null, (_, _) => Instalar());
-        menu.Items.Add("Abrir configuración", null, (_, _) => Abrir(Rutas.Config));
+        menu.Items.Add("Abrir config.json", null, (_, _) => Abrir(Rutas.Config));
         menu.Items.Add("Abrir carpeta de widgets", null, (_, _) => Abrir(Rutas.WidgetsPropios));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Salir", null, (_, _) => Salir());
@@ -459,7 +758,13 @@ internal sealed class Aplicacion : ApplicationContext
     public void Salir()
     {
         SystemEvents.DisplaySettingsChanged -= PantallasCambiaron;
+        atenuador.Stop();
+        if (atenuando)
+            mezclador.Restaurar();
+        comandos.QuitarAtajos();
+        ventanaAjustes?.Close();
         organizador.Dispose();
+        rendimiento.Dispose();
         baterias.Dispose();
         reproductor.Dispose();
         mezclador.Dispose();

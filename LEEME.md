@@ -23,6 +23,8 @@ La primera vez, Windows puede mostrar «Windows protegió su PC», porque el .ex
 | Opción | Qué hace |
 |---|---|
 | Escritorios | Cambia de escritorio (ver abajo), o vuelve al modo libre. |
+| Widgets | Todos los widgets disponibles, con una marca en los que se ven: clic para mostrar u ocultar. Desde ahí también se agregan los incluidos que falten y los propios. |
+| Configuración… | Una ventana con todo lo configurable, por pestañas: general, widgets, escritorios, ventanas y atajos. Guarda y aplica al momento (Ctrl+S). |
 | Pantalla de los widgets | Elige en qué pantalla van los widgets. |
 | Bloquear posición | Oculta la franja de arrastre para no moverlos sin querer. |
 | Restablecer posiciones | Los devuelve a su lugar inicial. |
@@ -38,7 +40,7 @@ Para mover un widget, arrástrelo desde la franja delgada de su borde superior. 
 
 Un escritorio es una distribución con nombre: qué widgets se ven, cómo se acomodan, y dónde van las ventanas de otros programas. Se cambia desde la bandeja → **Escritorios**. La configuración por defecto trae dos:
 
-- **Trabajo**: los widgets apilados en una columna a la derecha (reloj, reproductor, baterías y el Gran Sabio ocupando el resto), y Discord a la izquierda llenando todo el espacio que dejan.
+- **Trabajo**: los widgets apilados en una columna a la derecha (reloj, rendimiento, reproductor, baterías y el Gran Sabio ocupando el resto), y Discord a la izquierda llenando todo el espacio que dejan.
 - **Solo widgets**: todos los widgets, apilados a la derecha, sin reglas de ventanas.
 
 **Libre (sin escritorio)** es el modo de siempre: cada widget en su `lado`, y solo las reglas generales.
@@ -71,6 +73,8 @@ Así se escriben en `config.json`:
 | `titulo` | Cómo aparece en el menú. |
 | `pantalla` | Pantalla de los widgets en este escritorio. Si falta, la general. |
 | `apilar` | `"derecha"` o `"izquierda"`: los widgets van en una columna de ese lado, en el orden en que están escritos, uno debajo del otro. Los de `alto: 0` se reparten lo que sobra. Sin `apilar`, cada widget va a su `lado`. |
+| `atajo` | Tecla global para cambiar a este escritorio. |
+| `activarCon` | Programas que lo activan solos al abrirse; al cerrarse, se vuelve al escritorio anterior. |
 | `widgets` | Cuáles se ven y en qué orden: `true`, `false`, o un objeto con `lado`, `ancho`, `alto` o `pantalla` propios. Si falta, se ven todos. |
 | `ventanas` | Reglas de ventanas propias de este escritorio. Mandan sobre las generales. |
 
@@ -119,6 +123,45 @@ El widget muestra la batería de este equipo (si es portátil) y la de los apara
 
 Usa el mismo dato que muestra **Configuración → Bluetooth y dispositivos**. Para aparatos Bluetooth LE que no lo publican ahí, lo lee directamente del aparato. Si uno aparece con «sin dato», el aparato no informa su batería a Windows.
 
+## Configuración sin editar archivos
+
+Bandeja → **Configuración…** abre una ventana con pestañas:
+
+- **General**: pantalla de los widgets, iniciar con Windows, acomodar ventanas y «atenuar al hablar».
+- **Widgets**: cada widget con su título, tamaño, lado, pantalla, si es fijo, su color de fondo y, en el reproductor, el diseño. Abajo se agregan los incluidos que falten, un widget propio o una dirección web.
+- **Escritorios**: título, atajo de teclado, pantalla, si apila los widgets, con qué programas se activa solo, qué widgets muestra y en qué orden (flechas), y sus reglas de ventanas.
+- **Ventanas**: las reglas generales.
+- **Atajos**: las teclas globales.
+
+Lo que no esté ahí sigue en `config.json` («Abrir config.json»). Al instalar una versión nueva, los widgets incluidos que falten se agregan solos a su configuración (una sola vez: si después quita uno, no vuelve).
+
+## Atajos de teclado
+
+Valen en todo Windows y se escriben como `Ctrl+Alt+P`, `Win+Shift+F5` o `Ctrl+Espacio` (las letras y números necesitan Ctrl, Alt, Shift o Win; las teclas F y las multimedia, no). En `config.json`:
+
+```json
+"atajos": { "alternar": "Ctrl+Alt+P", "siguiente": "Ctrl+Alt+Right", "anterior": "Ctrl+Alt+Left", "libre": "Ctrl+Alt+0", "configuracion": "Ctrl+Alt+C" },
+"escritorios": { "trabajo": { "atajo": "Ctrl+Alt+1", … } }
+```
+
+Si otro programa ya usa una tecla, queda anotado en `registro.log` y el resto sigue funcionando.
+
+## Escritorio automático
+
+Un escritorio puede activarse solo cuando se abre un programa, y volver al anterior cuando ese programa se cierra. Por ejemplo, un escritorio «Juego» que deje la pantalla principal limpia:
+
+```json
+"juego": { "titulo": "Juego", "pantalla": "principal", "widgets": { "baterias": true, "rendimiento": true }, "activarCon": ["League of Legends.exe", "VALORANT-Win64-Shipping.exe"] }
+```
+
+## Atenuar al hablar
+
+Mientras mantiene **Espacio** sobre el Gran Sabio (es decir, mientras graba), los demás programas bajan a un cuarto de su volumen y vuelven al soltar. Se ajusta en Configuración → General (`"atenuar": { "activo": true, "widget": "gran-sabio", "nivel": 0.25 }`). El propio Escritorio, donde suena la voz del Gran Sabio, no se baja.
+
+## Rendimiento
+
+El widget `rendimiento` muestra el uso del procesador, la memoria y, con tarjeta NVIDIA, la GPU (uso, VRAM y temperatura), cada segundo. Con otra tarjeta, muestra solo CPU y memoria.
+
 ## Reproductor y volúmenes
 
 El widget muestra **lo que se esté escuchando**, venga de donde venga: Spotify, YouTube en el navegador, el Reproductor multimedia de Windows… Usa el mismo control que las teclas de reproducción del teclado, así que no hay que configurar nada por app. Trae carátula, progreso (clic en la barra para saltar), anterior/pausa/siguiente, y las teclas **Espacio**, **←** y **→** cuando el widget tiene el foco. Si varias apps suenan a la vez, aparece un selector para elegir cuál mostrar.
@@ -163,7 +206,7 @@ Cada widget acepta:
 
 | Clave | Para qué sirve |
 |---|---|
-| `integrado`, `archivo` o `url` | Qué muestra: un widget incluido (`reloj`, `baterias`, `reproductor`), un HTML de la carpeta de widgets, o una dirección. |
+| `integrado`, `archivo` o `url` | Qué muestra: un widget incluido (`reloj`, `baterias`, `reproductor`, `rendimiento`), un HTML de la carpeta de widgets, o una dirección. |
 | `opciones` | Pares nombre-valor que la página del widget recibe en su dirección (`?diseno=vinilo`). Sirve también para widgets propios. |
 | `titulo` | Su nombre. |
 | `ancho`, `alto` | Tamaño en píxeles a escala 100 % (se ajusta solo a la escala de la pantalla). `alto: 0` ocupa todo el alto. |

@@ -83,6 +83,8 @@ internal static class Win32
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder texto, int maximo);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc funcion, IntPtr lParam);
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT punto, uint flags);
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int tecla);
+    public const int VK_SPACE = 0x20;
 
     [DllImport("user32.dll")]
     public static extern IntPtr SetWinEventHook(uint minimo, uint maximo, IntPtr modulo, WinEventProc funcion, uint pid, uint hilo, uint flags);
