@@ -1,4 +1,5 @@
 using System.Drawing.Imaging;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
@@ -10,6 +11,8 @@ namespace Escritorio;
 /// Windows…): el mismo control multimedia que usa Windows para las teclas de reproducción.
 /// Manda al widget «reproductor» la pista, la carátula, el progreso y los controles disponibles,
 /// y ejecuta lo que el widget pida (pausar, siguiente, cambiar de app, ir a un punto).
+/// La carátula es la que da la app, salvo que sea el logo de un navegador; para lo que suena en un
+/// navegador se prefiere la del álbum buscada en Internet (Caratulas), si está permitido y se encuentra.
 /// </summary>
 internal sealed class Reproductor : IDisposable
 {
@@ -18,11 +21,18 @@ internal sealed class Reproductor : IDisposable
     readonly Aplicacion app;
     GlobalSystemMediaTransportControlsSessionManager? gestor;
     GlobalSystemMediaTransportControlsSession? sesion;  // la que se muestra
-    string? elegida;         // app pedida por el usuario; si no, la que Windows considere actual
-    string? claveCaratula;   // de la última carátula enviada
+    string? elegida;            // app pedida por el usuario; si no, la que Windows considere actual
+    string? caratulaEnviada;    // la última carátula mandada al widget (data URL)
+    bool caratulaLeida;         // si ya se decidió la carátula de la sesión actual
+    string? huellaLocal;        // hash de la última miniatura que dio la app, y cómo quedó codificada
+    string? localCodificada;
+    readonly Dictionary<string, string?> enLinea = new();   // pista → carátula buscada en Internet (null: no hay)
+    readonly HashSet<string> buscando = new();
     bool activo;
     bool enviando;
     bool pendiente;
+    bool pedirMedios;    // en el próximo envío, volver a leer la miniatura
+    bool pedirCompleto;  // …y mandar la carátula aunque no haya cambiado (el widget recién abre)
 
     public Reproductor(Aplicacion app) => this.app = app;
 
@@ -59,7 +69,7 @@ internal sealed class Reproductor : IDisposable
     public void Dispose() => _ = Activar(false);
 
     /// <summary>El widget pidió el estado (al abrirse): se le manda todo, con carátula.</summary>
-    public void Pedir() => _ = Enviar(conCaratula: true);
+    public void Pedir() => _ = Enviar(completo: true);
 
     public async Task Accion(string accion, string? sesionId, double posicion)
     {
@@ -93,7 +103,7 @@ internal sealed class Reproductor : IDisposable
 
     void AlCambiarActual(GlobalSystemMediaTransportControlsSessionManager g, CurrentSessionChangedEventArgs e) => app.EnUI(Enlazar);
     void AlCambiarSesiones(GlobalSystemMediaTransportControlsSessionManager g, SessionsChangedEventArgs e) => app.EnUI(Enlazar);
-    void AlCambiarMedios(GlobalSystemMediaTransportControlsSession s, MediaPropertiesChangedEventArgs e) => app.EnUI(() => _ = Enviar());
+    void AlCambiarMedios(GlobalSystemMediaTransportControlsSession s, MediaPropertiesChangedEventArgs e) => app.EnUI(() => _ = Enviar(medios: true));
     void AlCambiarReproduccion(GlobalSystemMediaTransportControlsSession s, PlaybackInfoChangedEventArgs e) => app.EnUI(() => _ = Enviar());
     void AlCambiarLinea(GlobalSystemMediaTransportControlsSession s, TimelinePropertiesChangedEventArgs e) => app.EnUI(() => _ = Enviar());
 
@@ -126,8 +136,10 @@ internal sealed class Reproductor : IDisposable
             sesion.PlaybackInfoChanged += AlCambiarReproduccion;
             sesion.TimelinePropertiesChanged += AlCambiarLinea;
         }
-        claveCaratula = null;
-        _ = Enviar(conCaratula: true);
+        caratulaLeida = false;
+        caratulaEnviada = null;
+        huellaLocal = localCodificada = null;
+        _ = Enviar(completo: true);
     }
 
     void Desenlazar()
@@ -142,11 +154,16 @@ internal sealed class Reproductor : IDisposable
 
     // --- Envío al widget ---
 
-    /// <summary>Arma el estado y se lo manda al widget. Si llegan avisos en ráfaga, se agrupan.</summary>
-    async Task Enviar(bool conCaratula = false)
+    /// <summary>
+    /// Arma el estado y se lo manda al widget. Si llegan avisos en ráfaga, se agrupan. «medios»: cambió
+    /// la pista o su miniatura (hay que volver a leerla); «completo»: mandar la carátula aunque sea la misma.
+    /// </summary>
+    async Task Enviar(bool medios = false, bool completo = false)
     {
         if (!activo)
             return;
+        pedirMedios |= medios || completo;
+        pedirCompleto |= completo;
         if (enviando)
         {
             pendiente = true;
@@ -158,8 +175,9 @@ internal sealed class Reproductor : IDisposable
             do
             {
                 pendiente = false;
-                var json = await Armar(conCaratula);
-                conCaratula = false;
+                bool conMedios = pedirMedios, conTodo = pedirCompleto;
+                pedirMedios = pedirCompleto = false;
+                var json = await Armar(conMedios, conTodo);
                 if (json is not null)
                     app.EnviarA("reproductor", json);
             } while (pendiente);
@@ -174,7 +192,7 @@ internal sealed class Reproductor : IDisposable
         }
     }
 
-    async Task<string?> Armar(bool conCaratula)
+    async Task<string?> Armar(bool medios, bool completo)
     {
         var sesiones = new List<object>();
         var actualId = sesion?.SourceAppUserModelId;
@@ -192,7 +210,8 @@ internal sealed class Reproductor : IDisposable
         }
         if (sesion is null)
         {
-            claveCaratula = null;
+            caratulaLeida = false;
+            caratulaEnviada = null;
             return JsonSerializer.Serialize(new { tipo = "reproductor", estado = "nada", sesiones });
         }
 
@@ -205,13 +224,18 @@ internal sealed class Reproductor : IDisposable
             GlobalSystemMediaTransportControlsSessionPlaybackStatus.Paused => "pausado",
             _ => "detenido",
         };
-        var clave = Medios.ClaveCaratula(propiedades?.Title, propiedades?.Artist, propiedades?.AlbumTitle);
         string? caratula = null;
-        bool caratulaNueva = conCaratula || clave != claveCaratula;
-        if (caratulaNueva)
+        bool caratulaNueva = false;
+        if (medios || completo || !caratulaLeida)
         {
-            caratula = await LeerCaratula(propiedades?.Thumbnail);
-            claveCaratula = clave;
+            var imagen = await ElegirCaratula(propiedades, sesion.SourceAppUserModelId);
+            caratulaLeida = true;
+            if (completo || imagen != caratulaEnviada)
+            {
+                caratulaEnviada = imagen;
+                caratula = imagen;
+                caratulaNueva = true;
+            }
         }
         return JsonSerializer.Serialize(new
         {
@@ -238,8 +262,63 @@ internal sealed class Reproductor : IDisposable
         });
     }
 
-    /// <summary>La carátula como data URL JPEG, reducida: el widget no necesita más de 320 px.</summary>
-    static async Task<string?> LeerCaratula(IRandomAccessStreamReference? referencia)
+    // --- Carátula ---
+
+    /// <summary>
+    /// La carátula que se muestra. La que da la app vale, salvo que sea el logo de un navegador. Para lo
+    /// que suena en un navegador (YouTube) se prefiere la del álbum buscada en Internet, si está permitido
+    /// y se encuentra: mientras se busca (o si no hay), queda la de la app.
+    /// </summary>
+    async Task<string?> ElegirCaratula(GlobalSystemMediaTransportControlsSessionMediaProperties? propiedades, string fuente)
+    {
+        var bytes = await LeerCaratula(propiedades?.Thumbnail);
+        bool navegador = Medios.EsNavegador(fuente);
+        string? local = null;
+        if (bytes is not null)
+        {
+            var huella = Convert.ToHexString(SHA256.HashData(bytes));
+            if (huella != huellaLocal)
+            {
+                huellaLocal = huella;
+                localCodificada = Codificar(bytes, descartarLogo: navegador);
+            }
+            local = localCodificada;
+        }
+        if ((local is not null && !navegador) || !app.Config.Reproductor.CaratulasEnLinea)
+            return local;
+        var clave = Medios.ClaveCaratula(propiedades?.Title, propiedades?.Artist, propiedades?.AlbumTitle);
+        if (enLinea.TryGetValue(clave, out var buscada))
+            return buscada ?? local;
+        _ = BuscarEnLinea(clave, propiedades?.Title, propiedades?.Artist);
+        return local;
+    }
+
+    /// <summary>Busca la carátula en Internet; si la encuentra, la guarda y vuelve a mandar el estado.</summary>
+    async Task BuscarEnLinea(string clave, string? titulo, string? artista)
+    {
+        if (!buscando.Add(clave))
+            return;
+        try
+        {
+            var resultado = await Caratulas.Buscar(titulo, artista);
+            var datos = resultado.Bytes is null ? null : Codificar(resultado.Bytes, descartarLogo: false);
+            if (resultado.Definitivo || datos is not null)
+            {
+                if (enLinea.Count >= 200)
+                    enLinea.Clear();
+                enLinea[clave] = datos;
+            }
+            if (datos is not null)
+                await Enviar(medios: true);
+        }
+        finally
+        {
+            buscando.Remove(clave);
+        }
+    }
+
+    /// <summary>Los bytes de la miniatura que da la app, si los hay.</summary>
+    static async Task<byte[]?> LeerCaratula(IRandomAccessStreamReference? referencia)
     {
         if (referencia is null)
             return null;
@@ -252,7 +331,32 @@ internal sealed class Reproductor : IDisposable
             await lector.LoadAsync((uint)flujo.Size);
             var bytes = new byte[flujo.Size];
             lector.ReadBytes(bytes);
+            return bytes;
+        }
+        catch (Exception error)
+        {
+            Registro.Info($"Sin carátula: {error.GetType().Name}: {error.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// La imagen como data URL JPEG, reducida: el widget no necesita más de 320 px. Con «descartarLogo»,
+    /// una imagen con esquinas transparentes (el logo que mandan los navegadores cuando la página no
+    /// publica carátula; una carátula o un fotograma son opacos) se desecha.
+    /// </summary>
+    static string? Codificar(byte[] bytes, bool descartarLogo)
+    {
+        try
+        {
             using var original = Image.FromStream(new MemoryStream(bytes));
+            if (descartarLogo)
+            {
+                bool logo = EsLogo(original);
+                Registro.Info($"Miniatura del navegador: {original.Width}x{original.Height}, transparencia={Image.IsAlphaPixelFormat(original.PixelFormat)}, logo={logo}");
+                if (logo)
+                    return null;
+            }
             int lado = Math.Max(original.Width, original.Height);
             using var reducida = lado > LadoMaximoCaratula
                 ? new Bitmap(original, new System.Drawing.Size(original.Width * LadoMaximoCaratula / lado, original.Height * LadoMaximoCaratula / lado))
@@ -266,8 +370,21 @@ internal sealed class Reproductor : IDisposable
         }
         catch (Exception error)
         {
-            Registro.Info($"Sin carátula: {error.GetType().Name}: {error.Message}");
+            Registro.Info($"Carátula ilegible: {error.GetType().Name}: {error.Message}");
             return null;
         }
+    }
+
+    static bool EsLogo(Image imagen)
+    {
+        if (imagen is not Bitmap mapa || !Image.IsAlphaPixelFormat(imagen.PixelFormat))
+            return false;
+        int derecha = mapa.Width - 1, abajo = mapa.Height - 1, transparentes = 0;
+        foreach (var (x, y) in new[] { (0, 0), (derecha, 0), (0, abajo), (derecha, abajo) })
+        {
+            if (mapa.GetPixel(x, y).A < 32)
+                transparentes++;
+        }
+        return transparentes >= 2;
     }
 }

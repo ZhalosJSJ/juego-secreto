@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.7.4
+
+- Reproductor: lo que suena en un navegador (YouTube en Brave, por ejemplo) mostraba el logo del navegador en lugar de la carátula. Ahora la app busca la carátula del álbum en iTunes con el título y el artista (sin lo que agregan los videos, como «(Official Video)»), solo acepta la que coincide con la canción y la guarda mientras la pista siga igual. Si no la encuentra, se queda con la miniatura del navegador, salvo que sea un logo con esquinas transparentes: entonces no muestra imagen.
+- Apps que no son navegadores (Spotify…) siguen usando su propia carátula, sin consultar nada.
+- Se desactiva en Configuración → General → *Reproductor y navegadores* o con `"reproductor": { "caratulasEnLinea": false }` en `config.json`. Lo único que sale del equipo es el título y el artista.
+
 ## 0.7.3
 
 - Mezclador: en dispositivos de salida sin medidor de nivel o sin volumen general (auriculares Bluetooth, salidas virtuales), `Activate` devuelve `E_NOINTERFACE`, que .NET entrega como `InvalidCastException: Specified cast is not valid`, y la lectura entera fallaba. Ahora esas dos cosas son opcionales: el panel muestra los programas y, si lo hay, el general.

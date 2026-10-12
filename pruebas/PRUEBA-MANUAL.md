@@ -107,6 +107,8 @@ Qué mirar: ¿aparecieron en la pantalla correcta? ¿Tienen el tamaño esperado 
 1. Borre `Escritorio.lnk` del escritorio de Windows (si existe) y en `%LOCALAPPDATA%\Escritorio\estado.json` quite `"accesoDirectoPreguntado"`. Abra la app: debe preguntar si crear el acceso directo; diga que sí y compruebe que abre la app.
 2. Con Brave cerrado del todo, Configuración → General → *Reproductor y navegadores* → **Activar** junto a Brave: debe decir «Listo…» y el estado pasar a «Controles multimedia activos». Abra Brave, reproduzca un video de YouTube: debe aparecer en el reproductor (y en los controles multimedia de Windows al tocar el volumen).
 3. Con Brave abierto, pulse Activar: debe pedir cerrarlo, sin tocar nada.
+4. Carátula en el navegador: reproduzca una canción conocida en YouTube (Brave). Debe verse la carátula del álbum (no el logo de Brave) en unos segundos; cambie de canción y debe cambiar. Con un video que no es música, no debe aparecer una carátula ajena (sin imagen o la miniatura del video). En `registro.log` queda «Miniatura del navegador: AxB, transparencia=…, logo=…»: si sigue saliendo el logo, mande esa línea.
+5. En Configuración → General → *Reproductor y navegadores*, desmarque «Buscar en Internet la carátula…», guarde y repita: ya no debe consultar nada (y Spotify sigue mostrando su carátula).
 
 ## Si algo falla
 

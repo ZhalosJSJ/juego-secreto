@@ -43,6 +43,16 @@ public class ConfigPruebas
     }
 
     [Fact]
+    public void CaratulasEnLineaEstanActivasPorDefectoYSePuedenApagar()
+    {
+        Assert.True(JsonSerializer.Deserialize<Config>("{}", Json.Opciones)!.Reproductor.CaratulasEnLinea);
+        var config = JsonSerializer.Deserialize<Config>("""{ "reproductor": { "caratulasEnLinea": false } }""", Json.Opciones)!;
+        Assert.False(config.Reproductor.CaratulasEnLinea);
+        var copia = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(config, Json.Opciones), Json.Opciones)!;
+        Assert.False(copia.Reproductor.CaratulasEnLinea);
+    }
+
+    [Fact]
     public void FondosTemaYActualizacionesVanYVuelven()
     {
         const string texto = """

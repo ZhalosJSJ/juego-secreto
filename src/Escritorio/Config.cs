@@ -37,6 +37,9 @@ public sealed class Config
     [JsonPropertyName("actualizaciones")]
     public AjustesActualizaciones Actualizaciones { get; set; } = new();
 
+    [JsonPropertyName("reproductor")]
+    public AjustesReproductor Reproductor { get; set; } = new();
+
     /// <summary>Versión del formato de este archivo: al subir, se agregan los widgets incluidos que falten.</summary>
     [JsonPropertyName("formato")]
     public int Formato { get; set; }
@@ -270,6 +273,16 @@ public sealed class AjustesActualizaciones
 
     /// <summary>Repositorio público de donde se descargan: «usuario/repositorio».</summary>
     [JsonPropertyName("repositorio")] public string Repositorio { get; set; } = "ZhalosJSJ/juego-secreto";
+}
+
+/// <summary>El widget de reproductor.</summary>
+public sealed class AjustesReproductor
+{
+    /// <summary>
+    /// Buscar la carátula en Internet (iTunes, por título y artista) cuando la app que reproduce no da una
+    /// útil: los navegadores mandan su propio logo si la página no publica la suya.
+    /// </summary>
+    [JsonPropertyName("caratulasEnLinea")] public bool CaratulasEnLinea { get; set; } = true;
 }
 
 /// <summary>Mientras se mantiene Espacio sobre un widget (el Gran Sabio), los demás programas suenan más bajo.</summary>

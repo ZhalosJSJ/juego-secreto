@@ -132,6 +132,10 @@
       s.append(el('div', { class: 'tarjeta' },
         el('p', { class: 'nota' }, 'Para que lo que suena en un navegador (YouTube, por ejemplo) aparezca en el reproductor, el navegador tiene que publicarlo en los controles multimedia de Windows. Brave trae esa opción apagada; aquí se activa (con el navegador cerrado).'),
         navegadores.length === 0 ? el('p', { class: 'vacio' }, 'No se encontró ningún navegador basado en Chromium.') : null,
+        el('div', { class: 'fila' },
+          marca('Buscar en Internet la carátula cuando la app no la entrega', config.reproductor.caratulasEnLinea !== false, v => config.reproductor.caratulasEnLinea = v),
+        ),
+        el('p', { class: 'nota' }, 'Los navegadores mandan su propio logo si la página no publica carátula. Con esto, la app consulta iTunes (Apple) con el título y el artista, nada más, y muestra la carátula del álbum.'),
         ...navegadores.map(n => el('div', { class: 'fila' },
           el('span', { class: 'titulo' }, n.nombre),
           el('span', { class: 'insignia' }, { habilitado: 'Controles multimedia activos', deshabilitado: 'Controles multimedia desactivados', 'por-defecto': 'Opción sin fijar' }[n.estado] || n.estado),
@@ -334,6 +338,7 @@
         config.widgets = config.widgets || {}; config.escritorios = config.escritorios || {}; config.organizar = config.organizar || { activo: true, reglas: [] };
         config.atajos = config.atajos || {}; config.atenuar = config.atenuar || { activo: true, widget: 'gran-sabio', nivel: 0.25 };
         config.actualizaciones = config.actualizaciones || { automatico: true };
+        config.reproductor = config.reproductor || { caratulasEnLinea: true };
         pintar();
         estado('');
       } else if (d.tipo === 'guardado') {
