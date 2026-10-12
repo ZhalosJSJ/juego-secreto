@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.7.1
+
+- Mezclador: las filas de los programas conservaban una clave en la primera lectura y otra en las siguientes, y además se reordenaban al sonar o callarse; el deslizador se «soltaba» al arrastrarlo. Ahora la clave es estable, el orden es por nombre y nada se mueve mientras se arrastra.
+- Mezclador: si no se puede leer, el panel muestra el motivo (y queda en `registro.log`); una sesión que muere a mitad de la lectura ya no arruina las demás.
+- Primera versión publicada en GitHub Releases: desde aquí, las copias instaladas se actualizan solas.
+
 ## 0.7.0
 
 - Sistema de estilos común para los widgets (`comun/estilo.css` y `comun/puente.js`) y tema claro, oscuro o automático.

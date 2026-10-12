@@ -304,9 +304,14 @@
     const ICONO_GENERAL = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 3a9 9 0 0 0-9 9v7h5v-7H5a7 7 0 0 1 14 0h-3v7h5v-7a9 9 0 0 0-9-9z"/></svg>';
 
     function pintarMezclador(d) {
+      const lista = $('lista');
+      if (d.error || !d.general) {
+        // Que se vea el motivo, y que quede en registro.log.
+        lista.replaceChildren(Object.assign(document.createElement('p'), { className: 'vacio', textContent: `No se pudo leer el mezclador: ${d.error || 'sin datos'}` }));
+        return;
+      }
       const filas = [{ clave: '*', nombre: 'General', nivel: d.general.nivel, silencio: d.general.silencio, pico: d.general.pico, activo: true, general: true }]
         .concat(d.programas || []);
-      const lista = $('lista');
       const vistas = new Set();
       for (const p of filas) {
         vistas.add(p.clave);
@@ -324,6 +329,8 @@
           rango.addEventListener('pointerdown', () => arrastrando.add(p.clave));
           rango.addEventListener('pointerup', () => arrastrando.delete(p.clave));
           rango.addEventListener('pointercancel', () => arrastrando.delete(p.clave));
+          rango.addEventListener('lostpointercapture', () => arrastrando.delete(p.clave));
+          rango.addEventListener('change', () => { arrastrando.delete(p.clave); cambiarVolumen(p.clave, rango.value / 100); });
           rango.addEventListener('input', () => cambiarVolumen(p.clave, rango.value / 100));
           fila.querySelector('.silencio').addEventListener('click', () => enviar({ silencio: { app: p.clave, valor: !fila.classList.contains('silenciado') } }));
           lista.appendChild(fila);
@@ -337,9 +344,11 @@
         fila.querySelector('.pico i').style.width = `${Math.min(100, Math.round((p.pico || 0) * 100))}%`;
         if (!arrastrando.has(p.clave)) fila.querySelector('input').value = Math.round((p.nivel || 0) * 100);
       }
-      for (const fila of [...lista.children]) if (!vistas.has(fila.dataset.clave)) fila.remove();
-      // Las filas se mantienen en el orden que manda la app (activas primero).
-      filas.forEach((p, i) => { const fila = lista.querySelector(`[data-clave="${CSS.escape(p.clave)}"]`); if (fila && lista.children[i] !== fila) lista.insertBefore(fila, lista.children[i]); });
+      // Mientras se arrastra un deslizador, nada se quita ni se mueve de lugar (si no, se suelta solo).
+      if (arrastrando.size === 0) {
+        for (const fila of [...lista.children]) if (fila.dataset.clave && !vistas.has(fila.dataset.clave)) fila.remove();
+        filas.forEach((p, i) => { const fila = lista.querySelector(`[data-clave="${CSS.escape(p.clave)}"]`); if (fila && lista.children[i] !== fila) lista.insertBefore(fila, lista.children[i]); });
+      }
       let vacio = lista.querySelector('.vacio');
       if (filas.length === 1) { if (!vacio) { vacio = document.createElement('p'); vacio.className = 'vacio'; vacio.textContent = 'Ningún programa está usando el sonido.'; lista.appendChild(vacio); } }
       else if (vacio) vacio.remove();

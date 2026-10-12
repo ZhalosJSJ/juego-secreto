@@ -30,7 +30,10 @@ internal sealed class Mezclador : IDisposable
 
     readonly Aplicacion app;
     readonly Dictionary<string, string?> iconos = new(StringComparer.OrdinalIgnoreCase);
-    readonly Dictionary<int, (string Nombre, string? Icono)> procesos = new();
+    // Por número de proceso: la clave se guarda también, para que no cambie entre una lectura y la siguiente.
+    readonly Dictionary<int, (string Clave, string Nombre, string? Icono)> procesos = new();
+    DateTime procesosDesde;
+    static readonly TimeSpan VidaDeProcesos = TimeSpan.FromSeconds(60);
     CoreAudio.IMMDevice? dispositivo;
     CoreAudio.IAudioSessionManager2? gestor;
     CoreAudio.IAudioEndpointVolume? general;
@@ -48,7 +51,7 @@ internal sealed class Mezclador : IDisposable
 
     public void Dispose() => Soltar();
 
-    /// <summary>Manda al widget el estado actual de todos los volúmenes.</summary>
+    /// <summary>Manda al widget el estado actual de todos los volúmenes (o el error, para que lo muestre).</summary>
     public void Enviar()
     {
         try
@@ -59,6 +62,7 @@ internal sealed class Mezclador : IDisposable
         {
             Registro.Error("No se pudo leer el mezclador", error);
             Soltar();
+            app.EnviarA("reproductor", JsonSerializer.Serialize(new { tipo = "mezclador", error = $"{error.GetType().Name}: {error.Message}" }));
         }
     }
 
@@ -155,10 +159,11 @@ internal sealed class Mezclador : IDisposable
         m.general.GetMute(out bool silencioGeneral);
         float picoGeneral = 0;
         m.medidorGeneral?.GetPeakValue(out picoGeneral);
+        // Orden estable (los activos no saltan de lugar al sonar o callarse): por nombre, el sistema al final.
         var programas = Programas(m.gestor!).Values
-            .OrderByDescending(p => p.Activo)
-            .ThenBy(p => p.Clave == Sistema)
+            .OrderBy(p => p.Clave == Sistema)
             .ThenBy(p => p.Nombre, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(p => p.Clave, StringComparer.OrdinalIgnoreCase)
             .Select(p => new { clave = p.Clave, nombre = p.Nombre, icono = p.Icono, activo = p.Activo, nivel = p.Nivel, silencio = p.Silencio, pico = p.Pico })
             .ToList();
         return new
@@ -180,53 +185,59 @@ internal sealed class Mezclador : IDisposable
         enumerador.GetCount(out int cantidad);
         for (int i = 0; i < cantidad; i++)
         {
-            CoreAudio.IAudioSessionControl control;
+            // Una sesión que muere a mitad de la lectura no arruina las demás.
             try
             {
-                enumerador.GetSession(i, out control);
-            }
-            catch (COMException)
-            {
-                continue;
-            }
-            control.GetState(out var estado);
-            if (estado == CoreAudio.AudioSessionState.Expired)
-                continue;
-            var control2 = (CoreAudio.IAudioSessionControl2)control;
-            control2.GetProcessId(out uint pid);
-            bool esSistema = control2.IsSystemSoundsSession() == 0;
-            var (clave, nombre, icono) = esSistema || pid == 0 ? (Sistema, Medios.NombreDeFuente(Sistema), null) : DescribirProceso((int)pid);
+                enumerador.GetSession(i, out var control);
+                control.GetState(out var estado);
+                if (estado == CoreAudio.AudioSessionState.Expired)
+                    continue;
+                var control2 = (CoreAudio.IAudioSessionControl2)control;
+                control2.GetProcessId(out uint pid);
+                bool esSistema = control2.IsSystemSoundsSession() == 0;
+                var (clave, nombre, icono) = esSistema || pid == 0 ? (Sistema, Medios.NombreDeFuente(Sistema), null) : DescribirProceso((int)pid);
 
-            if (!resultado.TryGetValue(clave, out var programa))
-            {
-                programa = new Programa { Clave = clave, Nombre = nombre, Icono = icono };
-                resultado[clave] = programa;
+                if (!resultado.TryGetValue(clave, out var programa))
+                {
+                    programa = new Programa { Clave = clave, Nombre = nombre, Icono = icono };
+                    resultado[clave] = programa;
+                }
+                var volumen = (CoreAudio.ISimpleAudioVolume)control;
+                volumen.GetMasterVolume(out float nivel);
+                volumen.GetMute(out bool silencio);
+                float pico = 0;
+                try
+                {
+                    ((CoreAudio.IAudioMeterInformation)control).GetPeakValue(out pico);
+                }
+                catch (Exception error) when (error is InvalidCastException or COMException)
+                {
+                }
+                bool primera = programa.Sesiones.Count == 0;
+                programa.Sesiones.Add(control);
+                programa.Activo |= estado == CoreAudio.AudioSessionState.Active;
+                programa.Nivel = primera ? nivel : Math.Max(programa.Nivel, nivel);
+                programa.Silencio = primera ? silencio : programa.Silencio && silencio;
+                programa.Pico = Math.Max(programa.Pico, pico);
             }
-            var volumen = (CoreAudio.ISimpleAudioVolume)control;
-            volumen.GetMasterVolume(out float nivel);
-            volumen.GetMute(out bool silencio);
-            float pico = 0;
-            try
+            catch (Exception error) when (error is COMException or InvalidCastException)
             {
-                ((CoreAudio.IAudioMeterInformation)control).GetPeakValue(out pico);
+                continue;
             }
-            catch (InvalidCastException)
-            {
-            }
-            bool primera = programa.Sesiones.Count == 0;
-            programa.Sesiones.Add(control);
-            programa.Activo |= estado == CoreAudio.AudioSessionState.Active;
-            programa.Nivel = primera ? nivel : Math.Max(programa.Nivel, nivel);
-            programa.Silencio = primera ? silencio : programa.Silencio && silencio;
-            programa.Pico = Math.Max(programa.Pico, pico);
         }
         return resultado;
     }
 
     (string Clave, string Nombre, string? Icono) DescribirProceso(int pid)
     {
+        // Un proceso puede terminar y otro reutilizar su número: la caché se renueva cada tanto.
+        if (DateTime.UtcNow - procesosDesde > VidaDeProcesos)
+        {
+            procesos.Clear();
+            procesosDesde = DateTime.UtcNow;
+        }
         if (procesos.TryGetValue(pid, out var conocido))
-            return (ClaveDe(conocido.Nombre, pid), conocido.Nombre, conocido.Icono);
+            return conocido;
         string proceso = "";
         string? descripcion = null, ruta = null;
         try
@@ -249,8 +260,9 @@ internal sealed class Mezclador : IDisposable
         }
         var nombre = Medios.NombreDePrograma(proceso, descripcion);
         var icono = ruta is null ? null : IconoDe(ruta);
-        procesos[pid] = (nombre, icono);
-        return (ClaveDe(proceso.Length > 0 ? proceso : nombre, pid), nombre, icono);
+        var clave = ClaveDe(proceso.Length > 0 ? proceso : nombre, pid);
+        procesos[pid] = (clave, nombre, icono);
+        return (clave, nombre, icono);
     }
 
     /// <summary>Clave estable por programa: su nombre de proceso en minúsculas.</summary>
@@ -301,7 +313,6 @@ internal sealed class Mezclador : IDisposable
             medidorGeneral = null;
         }
         dispositivoDesde = DateTime.UtcNow;
-        procesos.Clear();  // un proceso puede haber terminado y otro reutilizado su número
         return this;
     }
 
