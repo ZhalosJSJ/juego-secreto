@@ -62,7 +62,8 @@ internal sealed class Mezclador : IDisposable
         {
             Registro.Error("No se pudo leer el mezclador", error);
             Soltar();
-            app.EnviarA("reproductor", JsonSerializer.Serialize(new { tipo = "mezclador", error = $"{error.GetType().Name}: {error.Message}" }));
+            var detalle = error is InvalidOperationException ? error.Message : $"{error.GetType().Name}: {error.Message}";
+            app.EnviarA("reproductor", JsonSerializer.Serialize(new { tipo = "mezclador", error = detalle }));
         }
     }
 
@@ -73,7 +74,7 @@ internal sealed class Mezclador : IDisposable
         try
         {
             if (clave == General)
-                Preparar().general!.SetMasterVolumeLevelScalar(valor, ref sinContexto);
+                Preparar().general?.SetMasterVolumeLevelScalar(valor, ref sinContexto);
             else
                 foreach (var sesion in SesionesDe(clave))
                     ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(valor, ref sinContexto);
@@ -90,7 +91,7 @@ internal sealed class Mezclador : IDisposable
         try
         {
             if (clave == General)
-                Preparar().general!.SetMute(silencio, ref sinContexto);
+                Preparar().general?.SetMute(silencio, ref sinContexto);
             else
                 foreach (var sesion in SesionesDe(clave))
                     ((CoreAudio.ISimpleAudioVolume)sesion).SetMute(silencio, ref sinContexto);
@@ -155,10 +156,22 @@ internal sealed class Mezclador : IDisposable
     object Leer()
     {
         var m = Preparar();
-        m.general!.GetMasterVolumeLevelScalar(out float nivelGeneral);
-        m.general.GetMute(out bool silencioGeneral);
-        float picoGeneral = 0;
-        m.medidorGeneral?.GetPeakValue(out picoGeneral);
+        object? general = null;
+        if (m.general is not null)
+        {
+            m.general.GetMasterVolumeLevelScalar(out float nivelGeneral);
+            m.general.GetMute(out bool silencioGeneral);
+            float picoGeneral = 0;
+            try
+            {
+                m.medidorGeneral?.GetPeakValue(out picoGeneral);
+            }
+            catch (COMException)
+            {
+                m.medidorGeneral = null;
+            }
+            general = new { nivel = nivelGeneral, silencio = silencioGeneral, pico = picoGeneral };
+        }
         // Orden estable (los activos no saltan de lugar al sonar o callarse): por nombre, el sistema al final.
         var programas = Programas(m.gestor!).Values
             .OrderBy(p => p.Clave == Sistema)
@@ -169,7 +182,7 @@ internal sealed class Mezclador : IDisposable
         return new
         {
             tipo = "mezclador",
-            general = new { nivel = nivelGeneral, silencio = silencioGeneral, pico = picoGeneral },
+            general,   // null si el dispositivo no ofrece volumen general: el widget muestra solo los programas
             programas,
         };
     }
@@ -301,17 +314,28 @@ internal sealed class Mezclador : IDisposable
             return this;
         Soltar();
         var enumerador = (CoreAudio.IMMDeviceEnumerator)new CoreAudio.MMDeviceEnumerator();
-        enumerador.GetDefaultAudioEndpoint(CoreAudio.EDataFlow.Render, CoreAudio.ERole.Multimedia, out dispositivo);
-        gestor = (CoreAudio.IAudioSessionManager2)Activar(dispositivo, typeof(CoreAudio.IAudioSessionManager2).GUID);
-        general = (CoreAudio.IAudioEndpointVolume)Activar(dispositivo, typeof(CoreAudio.IAudioEndpointVolume).GUID);
         try
         {
-            medidorGeneral = (CoreAudio.IAudioMeterInformation)Activar(dispositivo, typeof(CoreAudio.IAudioMeterInformation).GUID);
+            enumerador.GetDefaultAudioEndpoint(CoreAudio.EDataFlow.Render, CoreAudio.ERole.Multimedia, out dispositivo);
         }
-        catch (COMException)
+        catch (COMException error)
         {
-            medidorGeneral = null;
+            throw new InvalidOperationException("No hay ningún dispositivo de salida de sonido.", error);
         }
+        // Las sesiones son imprescindibles; el volumen general y el medidor, no: algunos dispositivos
+        // (auriculares Bluetooth, salidas virtuales) no los ofrecen y Activate devuelve E_NOINTERFACE,
+        // que .NET entrega como InvalidCastException sin más detalle.
+        try
+        {
+            gestor = (CoreAudio.IAudioSessionManager2)Activar(dispositivo!, typeof(CoreAudio.IAudioSessionManager2).GUID);
+        }
+        catch (Exception error) when (error is COMException or InvalidCastException or NotSupportedException)
+        {
+            Soltar();
+            throw new InvalidOperationException("El dispositivo de salida predeterminado no permite leer sus sesiones de audio. Pruebe con otro dispositivo de salida.", error);
+        }
+        general = Opcional<CoreAudio.IAudioEndpointVolume>(dispositivo!, "volumen general");
+        medidorGeneral = Opcional<CoreAudio.IAudioMeterInformation>(dispositivo!, "medidor de nivel");
         dispositivoDesde = DateTime.UtcNow;
         return this;
     }
@@ -320,6 +344,19 @@ internal sealed class Mezclador : IDisposable
     {
         dispositivo.Activate(ref interfaz, CoreAudio.CLSCTX_ALL, IntPtr.Zero, out var objeto);
         return objeto;
+    }
+
+    static T? Opcional<T>(CoreAudio.IMMDevice dispositivo, string que) where T : class
+    {
+        try
+        {
+            return (T)Activar(dispositivo, typeof(T).GUID);
+        }
+        catch (Exception error) when (error is COMException or InvalidCastException or NotSupportedException)
+        {
+            Registro.Info($"El dispositivo de salida no ofrece {que} ({error.GetType().Name}); se sigue sin eso");
+            return null;
+        }
     }
 
     void Soltar()

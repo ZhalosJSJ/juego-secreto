@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.7.3
+
+- Mezclador: en dispositivos de salida sin medidor de nivel o sin volumen general (auriculares Bluetooth, salidas virtuales), `Activate` devuelve `E_NOINTERFACE`, que .NET entrega como `InvalidCastException: Specified cast is not valid`, y la lectura entera fallaba. Ahora esas dos cosas son opcionales: el panel muestra los programas y, si lo hay, el general.
+
 ## 0.7.2
 
 - Al arrancar por primera vez ofrece crear un acceso directo en el escritorio de Windows; también desde la bandeja y desde Configuración → General. Al instalar o actualizar, el acceso pasa a apuntar a la copia instalada; al desinstalar se quita.

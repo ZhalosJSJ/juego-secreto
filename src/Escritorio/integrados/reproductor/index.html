@@ -305,12 +305,13 @@
 
     function pintarMezclador(d) {
       const lista = $('lista');
-      if (d.error || !d.general) {
+      if (d.error) {
         // Que se vea el motivo, y que quede en registro.log.
-        lista.replaceChildren(Object.assign(document.createElement('p'), { className: 'vacio', textContent: `No se pudo leer el mezclador: ${d.error || 'sin datos'}` }));
+        lista.replaceChildren(Object.assign(document.createElement('p'), { className: 'vacio', textContent: `No se pudo leer el mezclador: ${d.error}` }));
         return;
       }
-      const filas = [{ clave: '*', nombre: 'General', nivel: d.general.nivel, silencio: d.general.silencio, pico: d.general.pico, activo: true, general: true }]
+      // Sin «general» (el dispositivo no lo ofrece) se muestran solo los programas.
+      const filas = (d.general ? [{ clave: '*', nombre: 'General', nivel: d.general.nivel, silencio: d.general.silencio, pico: d.general.pico, activo: true, general: true }] : [])
         .concat(d.programas || []);
       const vistas = new Set();
       for (const p of filas) {
@@ -350,7 +351,7 @@
         filas.forEach((p, i) => { const fila = lista.querySelector(`[data-clave="${CSS.escape(p.clave)}"]`); if (fila && lista.children[i] !== fila) lista.insertBefore(fila, lista.children[i]); });
       }
       let vacio = lista.querySelector('.vacio');
-      if (filas.length === 1) { if (!vacio) { vacio = document.createElement('p'); vacio.className = 'vacio'; vacio.textContent = 'Ningún programa está usando el sonido.'; lista.appendChild(vacio); } }
+      if ((d.programas || []).length === 0) { if (!vacio) { vacio = document.createElement('p'); vacio.className = 'vacio'; vacio.textContent = 'Ningún programa está usando el sonido.'; lista.appendChild(vacio); } }
       else if (vacio) vacio.remove();
     }
 
