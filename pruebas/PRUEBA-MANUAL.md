@@ -93,6 +93,15 @@ Qué mirar: ¿aparecieron en la pantalla correcta? ¿Tienen el tamaño esperado 
 6. **Atenuar**: con música sonando, haga clic en el Gran Sabio y mantenga Espacio: la música baja; al soltar, vuelve. Compruebe en el mezclador de Windows que el volumen de Spotify cambia y se restaura.
 7. **Rendimiento**: el widget muestra CPU, RAM y, con tarjeta NVIDIA, GPU con VRAM y temperatura. Compare con el Administrador de tareas.
 
+## 12. Tema, notas, fondos, atajo «activar» y actualizaciones
+
+1. Configuración → General → Tema «Claro» → Guardar: todos los widgets incluidos deben pasar a fondo claro (el reproductor, en sus diseños «tarjeta» y «mínimo»). Vuelva a «Oscuro».
+2. Bandeja → Widgets → marque **Notas**: aparece un bloc. Escriba algo; al segundo dice «Guardado». Salir y abrir: el texto sigue. En Configuración → Widgets → Notas ponga un archivo en OneDrive y guarde: el archivo debe crearse ahí.
+3. En un escritorio ponga «Fondos de pantalla» con una imagen para la pantalla 2 y actívelo: debe cambiar solo esa pantalla. Cambie a Libre: vuelve el fondo original.
+4. Atajos → «Traer un widget al frente» → Gran Sabio = `Ctrl+Alt+G`. Con otra app al frente, pulse la combinación: el Gran Sabio sube y, manteniendo Espacio, graba.
+5. Reloj: en Configuración → Widgets → Reloj active «Segundos» y «12 horas» y guarde.
+6. Bandeja → **Buscar actualizaciones**: si no hay Releases publicadas, debe decir «Ya tiene la última versión» (o avisar que no pudo consultar GitHub si no hay conexión). Cuando exista una Release más nueva, debe ofrecer instalarla y reiniciarse sola.
+
 ## Si algo falla
 
 - Errores: `%LOCALAPPDATA%\Escritorio\registro.log`.

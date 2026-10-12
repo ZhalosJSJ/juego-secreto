@@ -20,6 +20,9 @@ internal sealed class Aplicacion : ApplicationContext
     readonly Reproductor reproductor;
     readonly Mezclador mezclador;
     readonly Rendimiento rendimiento;
+    readonly Actualizaciones actualizaciones;
+    readonly Fondos fondos;
+    Action? accionDelGlobo;
     readonly System.Windows.Forms.Timer atenuador = new() { Interval = 80 };
     readonly Dictionary<int, Action> accionesDeAtajo = new();
     Dictionary<string, WidgetEfectivo> efectivos = new();
@@ -55,6 +58,13 @@ internal sealed class Aplicacion : ApplicationContext
         atenuador.Tick += (_, _) => RevisarAtenuacion();
 
         bandeja = new NotifyIcon { Icon = Icono, Text = "Escritorio", ContextMenuStrip = menu, Visible = true };
+        bandeja.BalloonTipClicked += (_, _) =>
+        {
+            var accion = accionDelGlobo;
+            accionDelGlobo = null;
+            accion?.Invoke();
+        };
+        bandeja.BalloonTipClosed += (_, _) => accionDelGlobo = null;
         menu.Opening += (_, e) =>
         {
             ConstruirMenu();
@@ -66,12 +76,18 @@ internal sealed class Aplicacion : ApplicationContext
         reproductor = new Reproductor(this);
         mezclador = new Mezclador(this);
         rendimiento = new Rendimiento(this);
+        actualizaciones = new Actualizaciones(this);
+        fondos = new Fondos(this);
         if (escritorioPedido is not null)
             Estado.Escritorio = IdEscritorio(escritorioPedido);
         AplicarEscritorio();
+        // Si la app se cerró a medias con un fondo cambiado, esto lo restaura; si no, pone el del escritorio actual.
+        if (EscritorioActual?.Fondos is not null || Estado.FondosOriginales is not null)
+            fondos.Aplicar(EscritorioActual?.Fondos);
         organizador.Iniciar();
         RegistrarAtajos();
         atenuador.Start();
+        actualizaciones.Iniciar();
         if (escritorioPedido is not null && EscritorioActual is not null)
             organizador.AlEntrarA(EscritorioActual);
         SystemEvents.DisplaySettingsChanged += PantallasCambiaron;
@@ -117,7 +133,7 @@ internal sealed class Aplicacion : ApplicationContext
 
     public void GuardarConfig() => Json.Escribir(Rutas.Config, Config);
 
-    void GuardarEstado() => Json.Escribir(Rutas.Estado, Estado);
+    public void GuardarEstado() => Json.Escribir(Rutas.Estado, Estado);
 
     static Icon CargarIcono()
     {
@@ -157,6 +173,8 @@ internal sealed class Aplicacion : ApplicationContext
         GuardarEstado();
         AplicarEscritorio();
         var escritorio = EscritorioActual;
+        if (escritorio?.Fondos is not null || Estado.FondosOriginales is not null)
+            fondos.Aplicar(escritorio?.Fondos);
         if (escritorio is null)
         {
             Avisar("Escritorio libre: los widgets vuelven a su distribución general.");
@@ -243,6 +261,7 @@ internal sealed class Aplicacion : ApplicationContext
         }
         foreach (var (accion, texto) in Config.Atajos)
         {
+            const string prefijoActivar = "activar:";
             Action? hacer = accion switch
             {
                 "alternar" => () => _ = reproductor.Accion("alternar", null, 0),
@@ -250,15 +269,26 @@ internal sealed class Aplicacion : ApplicationContext
                 "anterior" => () => _ = reproductor.Accion("anterior", null, 0),
                 "libre" => () => CambiarEscritorio(null),
                 "configuracion" => AbrirAjustes,
+                _ when accion.StartsWith(prefijoActivar, StringComparison.Ordinal) => () => TraerWidget(accion[prefijoActivar.Length..]),
                 _ => null,
             };
             if (hacer is null)
-                Registro.Error($"Acción de atajo desconocida: «{accion}» (valen: {string.Join(", ", Config.AccionesDeAtajo)})");
+                Registro.Error($"Acción de atajo desconocida: «{accion}» (valen: {string.Join(", ", Config.AccionesDeAtajo)} y activar:<widget>)");
             else
                 Registrar(texto, $"«{accion}»", hacer);
         }
         foreach (var (idEscritorio, escritorio) in Config.Escritorios)
             Registrar(escritorio.Atajo, $"el escritorio «{escritorio.Nombre(idEscritorio)}»", () => CambiarEscritorio(idEscritorio));
+    }
+
+    /// <summary>Trae un widget al frente con el foco (o avisa si no está en el escritorio actual).</summary>
+    void TraerWidget(string id)
+    {
+        var ventana = widgets.FirstOrDefault(w => w.Id == id);
+        if (ventana is null)
+            Avisar($"El widget «{id}» no está en el escritorio actual.");
+        else
+            ventana.Traer();
     }
 
     // --- Atenuar al hablar: mientras se mantiene Espacio sobre el widget elegido ---
@@ -419,8 +449,11 @@ internal sealed class Aplicacion : ApplicationContext
                 case "mezclador": mezclador.Enviar(); break;
                 case "rendimiento": rendimiento.Pedir(); break;
                 case "ajustes": EnviarAjustes(ventana); break;
+                case "notas": EnviarNotas(ventana); break;
             }
         }
+        if (mensaje.TryGetProperty("notas", out var notas) && notas.ValueKind == JsonValueKind.Object && Texto(notas, "texto") is { } textoNotas)
+            GuardarNotas(ventana, textoNotas);
         if (Texto(mensaje, "accion") is { } accion)
         {
             switch (accion)
@@ -446,6 +479,50 @@ internal sealed class Aplicacion : ApplicationContext
         {
             mezclador.Silencio(app2, silencio.TryGetProperty("valor", out var valor) && valor.ValueKind == JsonValueKind.True);
             mezclador.Enviar();
+        }
+    }
+
+    // --- Notas: un archivo de texto por widget («opciones»: archivo), por defecto en la carpeta de datos ---
+
+    static string RutaNotas(VentanaWidget ventana)
+    {
+        var pedida = ventana.Ajustes.Opciones?.GetValueOrDefault("archivo");
+        if (string.IsNullOrWhiteSpace(pedida))
+            return Path.Combine(Rutas.Datos, ventana.Id == "notas" ? "notas.txt" : $"notas-{ventana.Id}.txt");
+        var ruta = Environment.ExpandEnvironmentVariables(pedida.Trim().Trim('"'));
+        return Path.IsPathRooted(ruta) ? ruta : Path.Combine(Rutas.Datos, ruta);
+    }
+
+    void EnviarNotas(VentanaWidget ventana)
+    {
+        var ruta = RutaNotas(ventana);
+        string texto = "";
+        try
+        {
+            if (File.Exists(ruta))
+                texto = File.ReadAllText(ruta);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Registro.Error($"No se pudieron leer las notas de {ruta}", error);
+        }
+        ventana.Enviar(JsonSerializer.Serialize(new { tipo = "notas", texto, archivo = ruta }));
+    }
+
+    void GuardarNotas(VentanaWidget ventana, string texto)
+    {
+        var ruta = RutaNotas(ventana);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(ruta)!);
+            var temporal = ruta + ".tmp";
+            File.WriteAllText(temporal, texto);
+            File.Move(temporal, ruta, overwrite: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Registro.Error($"No se pudieron guardar las notas en {ruta}", error);
+            Avisar("No se pudieron guardar las notas. Revise la ruta en la configuración del widget.");
         }
     }
 
@@ -627,6 +704,13 @@ internal sealed class Aplicacion : ApplicationContext
 
     public void Avisar(string texto) => bandeja.ShowBalloonTip(4000, "Escritorio", texto, ToolTipIcon.Info);
 
+    /// <summary>Un globo que, al hacerle clic, ejecuta algo (por ejemplo, instalar una actualización).</summary>
+    public void AvisarConAccion(string texto, Action accion)
+    {
+        accionDelGlobo = accion;
+        bandeja.ShowBalloonTip(15000, "Escritorio", texto, ToolTipIcon.Info);
+    }
+
     // --- Menú de la bandeja ---
 
     void ConstruirMenu()
@@ -677,7 +761,9 @@ internal sealed class Aplicacion : ApplicationContext
         });
         if (!Instalacion.EstaInstalado)
             menu.Items.Add("Instalar en este equipo", null, (_, _) => Instalar());
+        menu.Items.Add("Buscar actualizaciones", null, (_, _) => _ = actualizaciones.Revisar(manual: true));
         menu.Items.Add("Abrir config.json", null, (_, _) => Abrir(Rutas.Config));
+        menu.Items.Add("Ver registro", null, (_, _) => Abrir(Rutas.Registro));
         menu.Items.Add("Abrir carpeta de widgets", null, (_, _) => Abrir(Rutas.WidgetsPropios));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Salir", null, (_, _) => Salir());
@@ -748,9 +834,9 @@ internal sealed class Aplicacion : ApplicationContext
         {
             Process.Start(new ProcessStartInfo(ruta) { UseShellExecute = true });
         }
-        catch (Exception) when (ruta.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        catch (Exception) when (ruta.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || ruta.EndsWith(".log", StringComparison.OrdinalIgnoreCase))
         {
-            // Sin programa asociado a .json: el Bloc de notas siempre está.
+            // Sin programa asociado: el Bloc de notas siempre está.
             Process.Start(new ProcessStartInfo("notepad.exe", $"\"{ruta}\"") { UseShellExecute = false });
         }
     }
@@ -763,6 +849,7 @@ internal sealed class Aplicacion : ApplicationContext
             mezclador.Restaurar();
         comandos.QuitarAtajos();
         ventanaAjustes?.Close();
+        actualizaciones.Dispose();
         organizador.Dispose();
         rendimiento.Dispose();
         baterias.Dispose();

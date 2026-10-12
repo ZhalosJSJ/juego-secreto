@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>Configuración de Escritorio</title>
+  <link rel="stylesheet" href="../comun/estilo.css">
+  <script src="../comun/puente.js"></script>
   <style>
     :root { color-scheme: dark; --fondo: #0b1220; --panel: #111b2e; --borde: #22304a; --tinta: #d9e8ff; --tenue: #8fa6c8; --acento: #86e6ff; --sobre-acento: #06101c; --peligro: #ff8a98; --bien: #6ef0be; }
     * { box-sizing: border-box; }
@@ -117,8 +119,10 @@
       s.append(el('div', { class: 'tarjeta' },
         el('div', { class: 'fila' },
           campo('Pantalla de los widgets', selector(opcionesPantallas(), config.pantalla, v => config.pantalla = v ?? 'secundaria')),
+          campo('Tema de los widgets', selector([{ valor: 'oscuro', texto: 'Oscuro' }, { valor: 'claro', texto: 'Claro' }, { valor: 'auto', texto: 'Como Windows' }], config.tema || 'oscuro', v => config.tema = v ?? 'oscuro')),
           marca('Iniciar con Windows', datos.inicioAutomatico, v => { datos.inicioAutomatico = v; enviar({ inicioAutomatico: v }); }),
           marca('Acomodar las ventanas nuevas según las reglas', config.organizar.activo, v => config.organizar.activo = v),
+          marca('Buscar versiones nuevas una vez al día', config.actualizaciones.automatico !== false, v => config.actualizaciones.automatico = v),
         ),
         el('p', { class: 'nota' }, datos.instalado ? `Instalado · versión ${datos.version}` : `Sin instalar (se ejecuta desde donde está) · versión ${datos.version}`),
       ));
@@ -155,6 +159,10 @@
             marca('Fijo (sin marco, al fondo)', w.fijo !== false, v => w.fijo = v),
             campo('Fondo', el('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(w.fondo || '') ? w.fondo : '#0b1220', oninput: e => w.fondo = e.target.value })),
             w.integrado === 'reproductor' ? campo('Diseño', selector(datos.disenos.map(d => ({ valor: d, texto: d })), (w.opciones || {}).diseno || 'tarjeta', v => { w.opciones = w.opciones || {}; w.opciones.diseno = v ?? 'tarjeta'; })) : null,
+            w.integrado === 'reloj' ? campo('Formato', selector([{ valor: '24', texto: '24 horas' }, { valor: '12', texto: '12 horas' }], (w.opciones || {}).formato || '24', v => { w.opciones = w.opciones || {}; w.opciones.formato = v ?? '24'; })) : null,
+            w.integrado === 'reloj' ? marca('Segundos', (w.opciones || {}).segundos === 'si', v => { w.opciones = w.opciones || {}; w.opciones.segundos = v ? 'si' : 'no'; }) : null,
+            w.integrado === 'reloj' ? marca('Fecha', (w.opciones || {}).fecha !== 'no', v => { w.opciones = w.opciones || {}; w.opciones.fecha = v ? 'si' : 'no'; }) : null,
+            w.integrado === 'notas' ? campo('Archivo donde se guardan (vacío = carpeta de datos; puede ser OneDrive)', texto((w.opciones || {}).archivo, v => { w.opciones = w.opciones || {}; if (v.trim()) w.opciones.archivo = v.trim(); else delete w.opciones.archivo; }, 'largo', { placeholder: '%OneDrive%\\Notas\\escritorio.txt' })) : null,
             w.url ? campo('Programa que lo inicia si no responde', texto(w.iniciar, v => w.iniciar = v, 'largo', { placeholder: 'C:\\…\\iniciar.bat' })) : null,
           ),
         );
@@ -203,6 +211,8 @@
             campo('Apilar los widgets', selector([{ valor: 'derecha', texto: 'En columna a la derecha' }, { valor: 'izquierda', texto: 'En columna a la izquierda' }], e.apilar ?? null, v => { if (v === null) delete e.apilar; else e.apilar = v; }, 'No: cada uno en su lado')),
             campo('Se activa solo al abrir (programas separados por coma)', texto((e.activarCon || []).join(', '), v => { const lista = v.split(',').map(x => x.trim()).filter(Boolean); if (lista.length) e.activarCon = lista; else delete e.activarCon; }, 'largo', { placeholder: 'League of Legends.exe, VALORANT-Win64-Shipping.exe' })),
           ),
+          el('h3', {}, 'Fondos de pantalla de este escritorio'),
+          el('div', { class: 'fila' }, datos.pantallas.map(p => campo(`${p.texto}: imagen (vacío = no cambiar)`, texto((e.fondos || {})[p.valor], v => { e.fondos = e.fondos || {}; if (v.trim()) e.fondos[p.valor] = v.trim(); else delete e.fondos[p.valor]; if (Object.keys(e.fondos).length === 0) delete e.fondos; }, 'medio', { placeholder: 'C:\\Imágenes\\fondo.jpg' })))),
           el('h3', {}, 'Widgets de este escritorio'),
           marca('Todos los widgets activos, cada uno en su lado', todos, v => { if (v) delete e.widgets; else e.widgets = Object.fromEntries(Object.keys(config.widgets).map(w => [w, true])); pintar(); }),
           todos ? null : listaOrdenada(e),
@@ -275,9 +285,14 @@
       s.append(el('h2', {}, 'Atajos de teclado'));
       s.append(el('p', { class: 'nota' }, 'Valen en todo Windows. Se escriben como ', el('code', {}, 'Ctrl+Alt+P'), ', ', el('code', {}, 'Win+Shift+F5'), ' o ', el('code', {}, 'Ctrl+Espacio'), '. Las letras y números necesitan Ctrl, Alt, Shift o Win. El atajo de cada escritorio se pone en su pestaña.'));
       const t = el('div', { class: 'tarjeta' });
-      for (const accion of datos.acciones)
-        t.append(el('div', { class: 'fila' }, campo(DESCRIPCION_ATAJO[accion] || accion, texto(config.atajos[accion], v => { if (v.trim()) config.atajos[accion] = v.trim(); else delete config.atajos[accion]; }, 'corto'))));
+      const atajo = (clave, etiqueta) => el('div', { class: 'fila' }, campo(etiqueta, texto(config.atajos[clave], v => { if (v.trim()) config.atajos[clave] = v.trim(); else delete config.atajos[clave]; }, 'corto')));
+      for (const accion of datos.acciones) t.append(atajo(accion, DESCRIPCION_ATAJO[accion] || accion));
       s.append(t);
+      s.append(el('h3', {}, 'Traer un widget al frente'));
+      s.append(el('p', { class: 'nota' }, 'Lo pone encima de las demás ventanas y con el foco: útil para hablarle al Gran Sabio con Espacio desde cualquier lugar.'));
+      const t2 = el('div', { class: 'tarjeta' });
+      for (const [id, w] of Object.entries(config.widgets)) t2.append(atajo(`activar:${id}`, w.titulo || id));
+      s.append(t2);
       return s;
     }
 
@@ -305,6 +320,7 @@
         datos = d; config = d.config;
         config.widgets = config.widgets || {}; config.escritorios = config.escritorios || {}; config.organizar = config.organizar || { activo: true, reglas: [] };
         config.atajos = config.atajos || {}; config.atenuar = config.atenuar || { activo: true, widget: 'gran-sabio', nivel: 0.25 };
+        config.actualizaciones = config.actualizaciones || { automatico: true };
         pintar();
         estado('');
       } else if (d.tipo === 'guardado') {

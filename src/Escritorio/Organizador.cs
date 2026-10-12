@@ -193,7 +193,8 @@ internal sealed class Organizador : IDisposable
         {
             Ajustes.Activo = !Ajustes.Activo;
             app.GuardarConfig();
-        }) { Checked = Ajustes.Activo });
+        })
+        { Checked = Ajustes.Activo });
         raiz.DropDownItems.Add("Acomodar las abiertas ahora", null, (_, _) =>
         {
             int movidas = OrdenarAhora();

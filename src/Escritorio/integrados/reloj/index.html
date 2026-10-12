@@ -3,34 +3,39 @@
 <head>
   <meta charset="utf-8">
   <title>Reloj</title>
+  <link rel="stylesheet" href="../comun/estilo.css">
+  <script src="../comun/puente.js"></script>
   <style>
-    :root { color-scheme: dark; }
-    html, body { margin: 0; height: 100%; }
-    body {
-      display: grid; place-content: center; text-align: center;
-      background: #0b1220; color: #d9e8ff;
-      font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-      cursor: default;
-    }
-    .hora { font-size: 46px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
-    .fecha { font-size: 14px; color: #8fa6c8; }
+    body { display: grid; place-content: center; text-align: center; gap: 2px; padding: 8px 12px; }
+    .hora { font-family: var(--fuente-titulo); font-size: 46px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .hora small { font-size: .4em; font-weight: 500; color: var(--tenue); margin-left: 6px; letter-spacing: .04em; }
+    .fecha { font-size: 14px; color: var(--tenue); }
+    .fecha[hidden] { display: none; }
   </style>
 </head>
 <body>
   <div class="hora" id="hora">--:--</div>
   <div class="fecha" id="fecha"></div>
   <script>
-    const formatoHora = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' });
-    const formatoFecha = new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long' });
+    // Opciones (config.json → "opciones"): formato 24|12, segundos si|no, fecha si|no.
+    const formato12 = Escritorio.opcion('formato', '24') === '12';
+    const conSegundos = Escritorio.opcion('segundos', 'no') === 'si';
+    const conFecha = Escritorio.opcion('fecha', 'si') !== 'no';
+    const fHora = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit', ...(conSegundos ? { second: '2-digit' } : {}), hour12: formato12 });
+    const fFecha = new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long' });
+    document.getElementById('fecha').hidden = !conFecha;
 
     function actualizar() {
       const ahora = new Date();
-      document.getElementById('hora').textContent = formatoHora.format(ahora);
-      const fecha = formatoFecha.format(ahora);
-      document.getElementById('fecha').textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1);
-      setTimeout(actualizar, 1000 - ahora.getMilliseconds() + 5);
+      const partes = fHora.formatToParts(ahora);
+      const hora = partes.filter(p => p.type !== 'dayPeriod' && !(p.type === 'literal' && p.value.trim() === '')).map(p => p.value).join('').trim();
+      const periodo = partes.find(p => p.type === 'dayPeriod');
+      const caja = document.getElementById('hora');
+      caja.textContent = formato12 && hora.startsWith('0') ? hora.slice(1) : hora;
+      if (periodo) { const s = document.createElement('small'); s.textContent = periodo.value.replace(/\.\s?/g, '').toUpperCase(); caja.append(s); }
+      if (conFecha) { const fecha = fFecha.format(ahora); document.getElementById('fecha').textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1); }
+      setTimeout(actualizar, (conSegundos ? 1000 : 60000 - ahora.getSeconds() * 1000) - ahora.getMilliseconds() + 5);
     }
-
     actualizar();
   </script>
 </body>

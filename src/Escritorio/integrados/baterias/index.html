@@ -3,43 +3,20 @@
 <head>
   <meta charset="utf-8">
   <title>Baterías</title>
+  <link rel="stylesheet" href="../comun/estilo.css">
+  <script src="../comun/puente.js"></script>
   <style>
-    :root {
-      color-scheme: dark;
-      --fondo: #0b1220; --tinta: #d9e8ff; --tenue: #8fa6c8; --pista: #1a2740;
-      --bien: #6ef0be; --medio: #ffc46b; --bajo: #ff8a98;
-    }
-    html, body { margin: 0; height: 100%; }
-    body {
-      background: var(--fondo); color: var(--tinta);
-      font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-      padding: 12px 16px; box-sizing: border-box; overflow-y: auto;
-      cursor: default; user-select: none;
-    }
-    header {
-      display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;
-      font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue);
-    }
-    header time { font-weight: 400; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+    body { padding: 12px 16px; overflow-y: auto; scrollbar-width: thin; }
+    header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+    header time { font-size: 11px; color: var(--tenue); font-variant-numeric: tabular-nums; }
     ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-    li {
-      display: grid; grid-template-columns: 22px minmax(0, 1fr) auto;
-      align-items: center; column-gap: 10px; row-gap: 5px;
-    }
-    svg { grid-row: span 2; width: 22px; height: 22px; color: var(--tenue); }
-    .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .nivel { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .barra { grid-column: 2 / 4; height: 4px; border-radius: 2px; background: var(--pista); overflow: hidden; }
-    .barra i { display: block; height: 100%; border-radius: 2px; background: var(--bien); transition: width .4s; }
-    .medio .barra i { background: var(--medio); }
-    .bajo .barra i { background: var(--bajo); }
-    .bajo .nivel { color: var(--bajo); }
-    .sin-dato .nivel { color: var(--tenue); font-weight: 400; }
-    .vacio { margin: 4px 0 0; color: var(--tenue); }
+    li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 5px; font-size: 14px; }
+    li svg { grid-row: span 2; width: 22px; height: 22px; color: var(--tenue); }
+    li .barra { grid-column: 2 / 4; }
   </style>
 </head>
 <body>
-  <header><span>Baterías</span><time id="hora"></time></header>
+  <header><span class="encabezado">Baterías</span><time id="hora"></time></header>
   <ul id="lista"></ul>
   <p class="vacio" id="vacio" hidden>Ningún aparato Bluetooth conectado.</p>
 
@@ -66,33 +43,27 @@
     function fila({ nombre, nivel, cargando }, tipo) {
       const li = document.createElement('li');
       const conDato = Number.isFinite(nivel);
-      li.className = !conDato ? 'sin-dato' : nivel <= 20 ? 'bajo' : nivel <= 50 ? 'medio' : '';
+      li.className = !conDato ? 'sin-dato' : nivel <= 20 ? 'alto' : nivel <= 50 ? 'medio' : '';
       li.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[tipo]}</svg>`
-        + '<span class="nombre"></span><span class="nivel"></span><span class="barra"><i></i></span>';
+        + '<span class="recortado nombre"></span><span class="valor"></span><div class="barra"><i></i></div>';
       // El nombre viene del aparato: se pone como texto, nunca como HTML.
       li.querySelector('.nombre').textContent = nombre;
       li.querySelector('.nombre').title = nombre;
-      li.querySelector('.nivel').textContent = conDato ? `${cargando ? '⚡ ' : ''}${nivel} %` : 'sin dato';
+      li.querySelector('.valor').textContent = conDato ? `${cargando ? '⚡ ' : ''}${nivel} %` : 'sin dato';
       li.querySelector('.barra i').style.width = conDato ? `${Math.max(0, Math.min(100, nivel))}%` : '0';
       return li;
     }
 
-    function pintar(datos) {
-      const lista = document.getElementById('lista');
+    Escritorio.al('baterias', datos => {
       const filas = [];
       if (datos.equipo) filas.push(fila(datos.equipo, 'equipo'));
       for (const aparato of datos.dispositivos || []) filas.push(fila(aparato, tipoDe(aparato.nombre || '')));
-      lista.replaceChildren(...filas);
+      document.getElementById('lista').replaceChildren(...filas);
       document.getElementById('vacio').hidden = (datos.dispositivos || []).length > 0;
-      document.getElementById('hora').textContent =
-        new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(new Date());
-    }
-
-    const puente = window.chrome && window.chrome.webview;
-    const pedir = () => puente && puente.postMessage({ pedir: 'baterias' });
-    if (puente) puente.addEventListener('message', e => { if (e.data && e.data.tipo === 'baterias') pintar(e.data); });
-    document.addEventListener('click', pedir);  // clic = actualizar ahora
-    pedir();
+      document.getElementById('hora').textContent = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(new Date());
+    });
+    document.addEventListener('click', () => Escritorio.pedir('baterias'));  // clic = actualizar ahora
+    Escritorio.pedir('baterias');
   </script>
 </body>
 </html>

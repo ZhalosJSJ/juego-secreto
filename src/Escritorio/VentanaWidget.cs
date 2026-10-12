@@ -256,12 +256,27 @@ internal sealed class VentanaWidget : Form
         }
     }
 
-    /// <summary>Las «opciones» del widget como parámetros de la dirección: ?diseno=vinilo&amp;otra=valor.</summary>
+    /// <summary>Las «opciones» del widget y el tema como parámetros de la dirección: ?tema=oscuro&amp;diseno=vinilo.</summary>
     string Consulta()
     {
-        if (Ajustes.Opciones is null || Ajustes.Opciones.Count == 0)
-            return "";
-        return "?" + string.Join('&', Ajustes.Opciones.Select(o => $"{Uri.EscapeDataString(o.Key)}={Uri.EscapeDataString(o.Value ?? "")}"));
+        var pares = new List<string>();
+        if (Ajustes.Opciones is null || !Ajustes.Opciones.ContainsKey("tema"))
+            pares.Add($"tema={Uri.EscapeDataString(app.Config.Tema)}");
+        foreach (var (clave, valor) in Ajustes.Opciones ?? new())
+            pares.Add($"{Uri.EscapeDataString(clave)}={Uri.EscapeDataString(valor ?? "")}");
+        return "?" + string.Join('&', pares);
+    }
+
+    /// <summary>Trae el widget al frente y le da el foco al contenido (para hablarle al Gran Sabio con Espacio).</summary>
+    public void Traer()
+    {
+        if (IsDisposed)
+            return;
+        if (WindowState == FormWindowState.Minimized)
+            WindowState = FormWindowState.Normal;
+        Activate();
+        if (web.Visible)
+            web.Focus();
     }
 
     /// <summary>Espera a que la dirección responda; si no responde, inicia su programa (si lo conoce).</summary>

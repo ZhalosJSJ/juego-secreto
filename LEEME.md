@@ -6,7 +6,9 @@ Es un solo archivo, `Escritorio.exe`. No necesita instalar Python, .NET ni nada 
 
 ## Obtener el .exe
 
-En GitHub, pestaña **Actions** → la última ejecución de **Compilar** → **Artifacts** → **Escritorio** (es un .zip con el .exe adentro). Cuando haya versiones publicadas, también estará en **Releases**.
+En GitHub, **Releases** tiene cada versión publicada con su `Escritorio-<versión>.exe`. Las compilaciones de cada cambio están en **Actions** → la ejecución de **Compilar** → **Artifacts** (un .zip con el .exe adentro).
+
+Una vez instalada, la app **busca versiones nuevas sola** una vez al día (y con bandeja → **Buscar actualizaciones**): si hay una, avisa con un globo; al hacerle clic la descarga y la instala. Se desactiva en Configuración → General.
 
 La primera vez, Windows puede mostrar «Windows protegió su PC», porque el .exe no está firmado: **Más información → Ejecutar de todas formas**.
 
@@ -32,6 +34,8 @@ La primera vez, Windows puede mostrar «Windows protegió su PC», porque el .ex
 | Organizar ventanas | Ver abajo. |
 | Iniciar con Windows | Arranca solo al iniciar sesión. |
 | Abrir configuración / carpeta de widgets | Abre `config.json` o la carpeta de sus widgets propios. |
+| Buscar actualizaciones | Consulta GitHub Releases y, si hay una versión nueva, la descarga e instala. |
+| Ver registro | Abre `registro.log`, donde quedan los errores. |
 | Salir | Cierra todo. |
 
 Para mover un widget, arrástrelo desde la franja delgada de su borde superior. Los widgets no aparecen en la barra de tareas ni en Alt+Tab, y vuelven detrás de las demás ventanas cuando deja de usarlos. Si conecta o desconecta una pantalla, se reacomodan solos.
@@ -123,6 +127,31 @@ El widget muestra la batería de este equipo (si es portátil) y la de los apara
 
 Usa el mismo dato que muestra **Configuración → Bluetooth y dispositivos**. Para aparatos Bluetooth LE que no lo publican ahí, lo lee directamente del aparato. Si uno aparece con «sin dato», el aparato no informa su batería a Windows.
 
+## Tema y estilo de los widgets
+
+Los widgets incluidos comparten un sistema de estilos y un **tema**: oscuro (por defecto), claro, o «como Windows» (`"tema": "oscuro" | "claro" | "auto"`, o Configuración → General). Un widget propio puede usar el mismo estilo y el tema con dos líneas en su `index.html`:
+
+```html
+<link rel="stylesheet" href="https://app.escritorio/comun/estilo.css">
+<script src="https://app.escritorio/comun/puente.js"></script>
+```
+
+Eso le da las variables de color (`--fondo`, `--tinta`, `--acento`…), la tipografía y componentes como `.barra`, `.insignia` y `.boton`, y `Escritorio.opcion('nombre')` para leer sus `opciones`.
+
+El **reloj** acepta `opciones`: `formato` (`24` o `12`), `segundos` (`si`/`no`) y `fecha` (`si`/`no`).
+
+## Notas
+
+El widget `notas` es un bloc que se guarda solo mientras escribe. Por defecto guarda en `%LOCALAPPDATA%\Escritorio\notas.txt`; con `"opciones": { "archivo": "%OneDrive%\\Notas\\escritorio.txt" }` lo guarda donde quiera (por ejemplo, junto a la memoria del Gran Sabio). Viene apagado: actívelo desde bandeja → Widgets.
+
+## Fondos de pantalla por escritorio
+
+Un escritorio puede cambiar el fondo de cada pantalla al activarse, y al salir de él se restauran los originales:
+
+```json
+"juego": { "titulo": "Juego", "fondos": { "principal": "C:\\Imágenes\\juego.jpg", "secundaria": "C:\\Imágenes\\juego-2.jpg" } }
+```
+
 ## Configuración sin editar archivos
 
 Bandeja → **Configuración…** abre una ventana con pestañas:
@@ -140,9 +169,11 @@ Lo que no esté ahí sigue en `config.json` («Abrir config.json»). Al instalar
 Valen en todo Windows y se escriben como `Ctrl+Alt+P`, `Win+Shift+F5` o `Ctrl+Espacio` (las letras y números necesitan Ctrl, Alt, Shift o Win; las teclas F y las multimedia, no). En `config.json`:
 
 ```json
-"atajos": { "alternar": "Ctrl+Alt+P", "siguiente": "Ctrl+Alt+Right", "anterior": "Ctrl+Alt+Left", "libre": "Ctrl+Alt+0", "configuracion": "Ctrl+Alt+C" },
+"atajos": { "alternar": "Ctrl+Alt+P", "siguiente": "Ctrl+Alt+Right", "anterior": "Ctrl+Alt+Left", "libre": "Ctrl+Alt+0", "configuracion": "Ctrl+Alt+C", "activar:gran-sabio": "Ctrl+Alt+G" },
 "escritorios": { "trabajo": { "atajo": "Ctrl+Alt+1", … } }
 ```
+
+`activar:<widget>` trae ese widget al frente con el foco: con `activar:gran-sabio` basta pulsar la combinación y mantener Espacio para hablarle desde cualquier programa.
 
 Si otro programa ya usa una tecla, queda anotado en `registro.log` y el resto sigue funcionando.
 
@@ -243,9 +274,12 @@ Todo queda en `%LOCALAPPDATA%\Escritorio`, nunca en el repositorio:
 
 ## Para desarrollar
 
-Requiere el SDK de .NET 10. Se puede compilar desde Windows, Linux o macOS:
+Requiere el SDK de .NET 10 (`global.json` fija la banda). Se puede compilar desde Windows, Linux o macOS:
 
 ```
-dotnet test pruebas/Escritorio.Pruebas                     # lógica: pantallas, posiciones, reglas, configuración
+dotnet test Escritorio.slnx                                 # lógica: pantallas, posiciones, reglas, configuración, atajos…
+dotnet format Escritorio.slnx                               # formato del código (CI comprueba que no haya diferencias)
 dotnet publish src/Escritorio -c Release -o publicado      # genera publicado/Escritorio.exe
 ```
+
+Para publicar una versión: suba `<Version>` en `src/Escritorio/Escritorio.csproj`, anote el cambio en `CAMBIOS.md` y suba a `main` (o cree la etiqueta `vX.Y.Z`): el flujo de GitHub compila, prueba y crea la Release con `Escritorio-X.Y.Z.exe`, que es la que encuentran las copias instaladas al buscar actualizaciones.

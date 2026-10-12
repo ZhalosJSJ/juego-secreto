@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Notas</title>
+  <link rel="stylesheet" href="../comun/estilo.css">
+  <script src="../comun/puente.js"></script>
+  <style>
+    body { display: grid; grid-template-rows: auto 1fr; padding: 10px 12px 8px; gap: 6px; }
+    header { display: flex; justify-content: space-between; align-items: baseline; }
+    header .estado { font-size: 11px; color: var(--tenue); transition: opacity .4s; }
+    header .estado.oculto { opacity: 0; }
+    textarea {
+      width: 100%; height: 100%; resize: none; border: 0; outline: 0; padding: 2px 0;
+      background: transparent; color: var(--tinta); font: 14px/1.5 var(--fuente); user-select: text; cursor: text;
+      scrollbar-width: thin;
+    }
+    textarea::placeholder { color: var(--tenue); }
+    :root[data-tema="claro"] textarea { font-weight: 450; }
+  </style>
+</head>
+<body>
+  <header><span class="encabezado">Notas</span><span class="estado oculto" id="estado"></span></header>
+  <textarea id="texto" placeholder="Escriba aquí. Se guarda solo." spellcheck="false"></textarea>
+
+  <script>
+    const caja = document.getElementById('texto');
+    const estado = document.getElementById('estado');
+    let guardado = '';
+    let temporizador = null;
+
+    function mostrarEstado(texto) {
+      estado.textContent = texto;
+      estado.classList.remove('oculto');
+      clearTimeout(mostrarEstado.t);
+      mostrarEstado.t = setTimeout(() => estado.classList.add('oculto'), 1800);
+    }
+    function guardar() {
+      clearTimeout(temporizador);
+      if (caja.value === guardado) return;
+      guardado = caja.value;
+      Escritorio.enviar({ notas: { texto: caja.value } });
+      mostrarEstado('Guardado');
+    }
+
+    caja.addEventListener('input', () => { clearTimeout(temporizador); temporizador = setTimeout(guardar, 700); });
+    caja.addEventListener('blur', guardar);
+    caja.addEventListener('keydown', e => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); guardar(); } });
+    // Si el archivo cambió desde otro lado (otro equipo por OneDrive), se recarga al volver al widget.
+    window.addEventListener('focus', () => { if (caja.value === guardado) Escritorio.pedir('notas'); });
+
+    Escritorio.al('notas', d => {
+      if (typeof d.texto !== 'string') return;
+      if (d.texto !== caja.value && caja.value === guardado) caja.value = d.texto;
+      guardado = d.texto;
+      if (d.archivo) caja.title = d.archivo;
+    });
+    Escritorio.pedir('notas');
+  </script>
+</body>
+</html>

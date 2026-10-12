@@ -8,9 +8,11 @@ App nativa para Windows 11 (C# / .NET 10, WinForms + WebView2) que pone widgets 
 
 ## Compilar y probar
 
-- `dotnet test pruebas/Escritorio.Pruebas`: lógica pura (geometría, reglas, configuración). Corre en Linux: el proyecto de pruebas enlaza `Geometria.cs`, `Reglas.cs` y `Config.cs`, que no deben depender de WinForms ni de Windows.
+- `dotnet test Escritorio.slnx`: lógica pura (geometría, reglas, configuración, medios, versiones, teclas). Corre en Linux: el proyecto de pruebas enlaza los archivos puros, que no deben depender de WinForms ni de Windows.
+- `dotnet format Escritorio.slnx`: formato según `.editorconfig`; CI falla si hay diferencias (`--verify-no-changes`). Pasarlo antes de subir.
 - `dotnet publish src/Escritorio -c Release -o publicado`: genera el .exe. Compila también desde Linux (`EnableWindowsTargeting`), pero solo se puede ejecutar en Windows.
-- `.github/workflows/compilar.yml` compila en `windows-latest` y sube el .exe como artefacto. Con una etiqueta `v*`, publica una versión.
+- `global.json` fija la banda del SDK; `Directory.Build.props` pone Nullable, ImplicitUsings y avisos como errores para los dos proyectos.
+- `.github/workflows/compilar.yml` compila en `windows-latest`, sube `Escritorio-<versión>.exe` como artefacto y publica una Release con una etiqueta `v*` o cuando en `main` cambia `<Version>` y no existe su etiqueta. **Para publicar**: subir `<Version>`, anotar en `CAMBIOS.md`, subir a `main`. La app instalada busca esa Release (`Actualizaciones.cs`).
 - En las sesiones en la nube, el SDK se instala con `apt-get install dotnet-sdk-10.0` (las descargas de builds.dotnet.microsoft.com están bloqueadas; NuGet sí funciona).
 
 ## Arquitectura (`src/Escritorio`)
@@ -33,9 +35,14 @@ App nativa para Windows 11 (C# / .NET 10, WinForms + WebView2) que pone widgets 
 - **Migración** (`Config.Completar`): al cargar, si `formato` < `FormatoActual`, agrega los widgets incluidos que falten (por su `integrado`) y sube `formato`. Así una configuración de una versión anterior recibe los widgets nuevos una sola vez. Al agregar un widget incluido nuevo: sumarlo a `PorDefecto()` y subir `FormatoActual`.
 - `Instalacion.cs`: copia a `%LOCALAPPDATA%\Programs\Escritorio`, acceso del menú Inicio (`IShellLinkW`), clave `Uninstall` en HKCU (aparece en Configuración → Aplicaciones), inicio con Windows en `HKCU\...\Run`. **Actualización automática** (`ActualizarSiHaceFalta`): si este .exe no es el instalado y hay uno instalado, `Versiones.Decidir` elige entre reemplazar (versión igual o mayor con otro contenido), abrir la instalada (mismo archivo) o no degradar (más vieja). Reemplazar = pedir «salir» por `Comandos` a la copia abierta (las versiones anteriores a 0.5.0 no lo entienden: se terminan con `Kill`), copiar con reintentos, borrar todo lo que no sea el .exe en la carpeta, volver a registrar y relanzar con `--reemplazar --actualizado <v>`. La versión del archivo instalado se lee de `FileVersionInfo.ProductVersion`.
 - `Versiones.cs`: parseo y decisión de versiones, puro, con pruebas.
+- `Actualizaciones.cs`: a los 2 min de arrancar y luego cada 6 h (como mucho una vez cada 20 h, `Estado.UltimaBusqueda`), solo si está instalada y `actualizaciones.automatico`: GET `api.github.com/repos/<repositorio>/releases/latest`, compara `tag_name` con `Instalacion.Version`, y si hay una nueva avisa con un globo con acción (`AvisarConAccion`) o pregunta si fue manual. Instalar = descargar el primer activo `.exe` a `%LOCALAPPDATA%\Escritorio\descargas` y abrirlo: el .exe nuevo se instala solo.
+- `Fondos.cs`: `IDesktopWallpaper` (COM) por monitor; empareja monitores con pantallas por su rectángulo. Guarda los fondos originales en `Estado.FondosOriginales` y los restaura al entrar a un escritorio sin `fondos` (o al arrancar, si quedaron de un cierre a medias).
+- **Notas**: `{pedir:"notas"}` → `{tipo:"notas", texto, archivo}`; `{notas:{texto}}` guarda (temporal + reemplazo). Ruta: `opciones.archivo` (con variables de entorno, relativa a la carpeta de datos si no es absoluta) o `notas.txt`.
+- **Tema**: `Config.Tema` va a cada widget como `?tema=` (`VentanaWidget.Consulta`); `comun/puente.js` lo pone en `<html data-tema>` y `comun/estilo.css` define los tokens (oscuro, claro, auto). Los widgets incluidos usan `comun/estilo.css` + `comun/puente.js` (`Escritorio.pedir/al/enviar/opcion`).
+- **Atajo `activar:<widget>`**: `VentanaWidget.Traer()` (restaura, activa, foco al WebView2).
 - `Rutas.ExtraerIntegrados` vacía la carpeta `integrados` antes de extraer: no quedan widgets de versiones anteriores.
 - `Geometria.cs`, `Reglas.cs`, `Config.cs`: lógica pura, con pruebas. `Config.WidgetsDe(escritorio)` resuelve qué widgets se ven y con qué ajustes; `Geometria.Apilar` arma la columna y `ZonaLibre` lo que queda; `Reglas.Destino(regla, espacio, actual)` admite `Medida` (píxeles o `"60%"` del espacio).
-- `integrados/<nombre>/index.html`: widgets incluidos (reloj, baterías, reproductor), incrustados en el .exe y copiados al iniciar a `%LOCALAPPDATA%\Escritorio\integrados`. Se sirven como `https://app.escritorio/`; los propios, como `https://widgets.escritorio/`. Las `opciones` del widget van en la dirección como parámetros (`?diseno=vinilo`). El reproductor tiene cinco diseños (`tarjeta`, `vinilo`, `minimo`, `portada`, `neon`) por `body[data-diseno]`, con el elegido en `localStorage`.
+- `integrados/<nombre>/index.html`: widgets incluidos (reloj, baterías, reproductor, rendimiento, notas, ajustes) y `integrados/comun/` (estilos y puente), incrustados en el .exe y copiados al iniciar a `%LOCALAPPDATA%\Escritorio\integrados`. Se sirven como `https://app.escritorio/`; los propios, como `https://widgets.escritorio/`. Las `opciones` del widget van en la dirección como parámetros (`?diseno=vinilo`). El reproductor tiene cinco diseños (`tarjeta`, `vinilo`, `minimo`, `portada`, `neon`) por `body[data-diseno]`, con el elegido en `localStorage`.
 - Los mensajes del widget a la app pasan por `VentanaWidget.MensajeRecibido` → `Aplicacion.Mensaje(ventana, JsonElement)`: `pedir`, `accion`, `volumen`, `silencio`.
 
 ## Decisiones (no cambiar sin motivo)
@@ -50,7 +57,8 @@ App nativa para Windows 11 (C# / .NET 10, WinForms + WebView2) que pone widgets 
 
 ## Pendiente / ideas acordadas con el usuario
 
-- Probar en Windows real: dos pantallas con escalas distintas, arrastre, micrófono, baterías de sus aparatos, reglas de ventanas, escritorios (apilado, cambio, `--escritorio`, `activarCon`), reproductor (Spotify y navegador, carátulas, mezclador con Chrome y Discord), atajos globales, atenuar al hablar, rendimiento (NVML), ventana de configuración, instalación, actualización y desinstalación.
+- Probar en Windows real: dos pantallas con escalas distintas, arrastre, micrófono, baterías de sus aparatos, reglas de ventanas, escritorios (apilado, cambio, `--escritorio`, `activarCon`, `fondos`), reproductor (Spotify y navegador, carátulas, mezclador con Chrome y Discord), atajos globales (incluido `activar:`), atenuar al hablar, rendimiento (NVML), notas, tema claro, ventana de configuración, instalación, actualización (manual y desde Releases) y desinstalación.
+- Las Releases solo se crean desde `main` o con etiquetas: mientras el trabajo esté en una rama, «Buscar actualizaciones» no encuentra nada.
 - Si existe, revisar el proyecto anterior de baterías del usuario (no se encontró en GitHub, Drive ni artifacts) para igualar su método.
 - Widgets del panel de Windows 11 (Win+W): proveedor con Windows App SDK + Adaptive Cards, empaquetado MSIX. Es otra pieza.
 - Firmar el .exe (evita el aviso de SmartScreen).

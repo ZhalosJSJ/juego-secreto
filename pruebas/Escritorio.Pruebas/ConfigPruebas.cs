@@ -10,8 +10,12 @@ public class ConfigPruebas
     public void LaConfiguracionPorDefectoTraeLosWidgetsIncluidos()
     {
         var config = Config.PorDefecto();
-        Assert.Equal(["gran-sabio", "reloj", "baterias", "reproductor", "rendimiento"], config.Widgets.Keys);
+        Assert.Equal(["gran-sabio", "reloj", "baterias", "reproductor", "rendimiento", "notas"], config.Widgets.Keys);
+        Assert.False(config.Widgets["notas"].Activo);   // disponible, pero apagado hasta que se quiera
         Assert.Equal(Config.FormatoActual, config.Formato);
+        Assert.Equal("oscuro", config.Tema);
+        Assert.True(config.Actualizaciones.Automatico);
+        Assert.Contains("/", config.Actualizaciones.Repositorio);
         Assert.Equal(["trabajo", "widgets"], config.Escritorios.Keys);
         Assert.Equal("secundaria", config.Pantalla);
         Assert.Equal("no", config.Widgets["gran-sabio"].Entorno!["NAVEGADOR"]);
@@ -25,10 +29,10 @@ public class ConfigPruebas
         const string texto = """{ "widgets": { "reloj": { "integrado": "reloj" }, "mio": { "archivo": "mio/index.html" } } }""";
         var config = JsonSerializer.Deserialize<Config>(texto, Json.Opciones)!;
         Assert.Equal(0, config.Formato);
-        Assert.Equal(["baterias", "reproductor", "rendimiento"], config.IncluidosQueFaltan().Select(f => f.Id));
+        Assert.Equal(["baterias", "reproductor", "rendimiento", "notas"], config.IncluidosQueFaltan().Select(f => f.Id));
 
         Assert.True(config.Completar());
-        Assert.Equal(["reloj", "mio", "baterias", "reproductor", "rendimiento"], config.Widgets.Keys);
+        Assert.Equal(["reloj", "mio", "baterias", "reproductor", "rendimiento", "notas"], config.Widgets.Keys);
         Assert.Equal(Config.FormatoActual, config.Formato);
         Assert.Empty(config.IncluidosQueFaltan());
 
@@ -39,10 +43,25 @@ public class ConfigPruebas
     }
 
     [Fact]
+    public void FondosTemaYActualizacionesVanYVuelven()
+    {
+        const string texto = """
+            { "tema": "claro", "actualizaciones": { "automatico": false },
+              "escritorios": { "juego": { "fondos": { "principal": "C:\\fondos\\juego.jpg", "2": "%USERPROFILE%\\otro.png" } } } }
+            """;
+        var config = JsonSerializer.Deserialize<Config>(texto, Json.Opciones)!;
+        Assert.Equal("claro", config.Tema);
+        Assert.False(config.Actualizaciones.Automatico);
+        Assert.Equal(["principal", "2"], config.Escritorios["juego"].Fondos!.Keys);
+        var copia = JsonSerializer.Deserialize<Config>(JsonSerializer.Serialize(config, Json.Opciones), Json.Opciones)!;
+        Assert.Equal(config.Escritorios["juego"].Fondos, copia.Escritorios["juego"].Fondos);
+    }
+
+    [Fact]
     public void IdLibreNoPisaLosExistentes()
     {
         var config = Config.PorDefecto();
-        Assert.Equal("notas", config.IdLibre("notas"));
+        Assert.Equal("clima", config.IdLibre("clima"));
         Assert.Equal("reloj-2", config.IdLibre("reloj"));
         config.Widgets["reloj-2"] = new AjustesWidget();
         Assert.Equal("reloj-3", config.IdLibre("reloj"));

@@ -1,5 +1,6 @@
 # Compila Escritorio.exe en Windows en cada push y lo deja como artefacto descargable.
-# Con una etiqueta v* (por ejemplo v0.2.0) además publica una versión con el .exe adjunto.
+# Publica una versión en GitHub Releases al subir una etiqueta v* o cuando en main cambia
+# la versión del .csproj y todavía no existe su etiqueta.
 name: Compilar
 
 on:
@@ -21,20 +22,40 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Formato
+        run: dotnet format Escritorio.slnx --verify-no-changes
+
       - name: Pruebas
-        run: dotnet test pruebas/Escritorio.Pruebas -c Release
+        run: dotnet test Escritorio.slnx -c Release
+
+      - name: Versión
+        id: version
+        shell: bash
+        run: |
+          version=$(grep -oP '<Version>\K[^<]+' src/Escritorio/Escritorio.csproj)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "v$version" >/dev/null 2>&1; then existe=si; else existe=no; fi
+          echo "existe=$existe" >> "$GITHUB_OUTPUT"
 
       - name: Publicar el .exe
         run: dotnet publish src/Escritorio -c Release -o publicado
 
+      - name: Nombrar con la versión
+        shell: bash
+        run: cp publicado/Escritorio.exe "publicado/Escritorio-${{ steps.version.outputs.version }}.exe"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: Escritorio
-          path: publicado/Escritorio.exe
+          name: Escritorio-${{ steps.version.outputs.version }}
+          path: publicado/Escritorio-${{ steps.version.outputs.version }}.exe
           if-no-files-found: error
 
       - name: Publicar la versión
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && steps.version.outputs.existe == 'no')
         uses: softprops/action-gh-release@v2
         with:
-          files: publicado/Escritorio.exe
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Escritorio ${{ steps.version.outputs.version }}
+          body: "Abra el .exe: reemplaza la versión instalada. Detalle en CAMBIOS.md."
+          files: publicado/Escritorio-${{ steps.version.outputs.version }}.exe
+          fail_on_unmatched_files: true

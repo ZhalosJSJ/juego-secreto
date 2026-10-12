@@ -30,11 +30,18 @@ public sealed class Config
     [JsonPropertyName("atenuar")]
     public AjustesAtenuar Atenuar { get; set; } = new();
 
+    /// <summary>«oscuro» (por defecto), «claro» o «auto» (según Windows). Lo reciben todos los widgets.</summary>
+    [JsonPropertyName("tema")]
+    public string Tema { get; set; } = "oscuro";
+
+    [JsonPropertyName("actualizaciones")]
+    public AjustesActualizaciones Actualizaciones { get; set; } = new();
+
     /// <summary>Versión del formato de este archivo: al subir, se agregan los widgets incluidos que falten.</summary>
     [JsonPropertyName("formato")]
     public int Formato { get; set; }
 
-    public const int FormatoActual = 2;
+    public const int FormatoActual = 3;
 
     public static readonly string[] AccionesDeAtajo = ["alternar", "siguiente", "anterior", "libre", "configuracion"];
 
@@ -86,6 +93,16 @@ public sealed class Config
                 Ancho = 300,
                 Alto = 150,
                 Lado = "arriba",
+            },
+            // Disponible en el menú «Widgets», apagado hasta que se quiera.
+            ["notas"] = new AjustesWidget
+            {
+                Titulo = "Notas",
+                Integrado = "notas",
+                Activo = false,
+                Ancho = 320,
+                Alto = 260,
+                Lado = "centro",
             },
         },
         Escritorios =
@@ -237,10 +254,22 @@ public sealed class Escritorio
     /// <summary>Programas que, al abrir su ventana, activan este escritorio; al cerrarse, se vuelve al anterior.</summary>
     [JsonPropertyName("activarCon")] public List<string>? ActivarCon { get; set; }
 
+    /// <summary>Fondo de pantalla por pantalla («principal», «secundaria» o número) → ruta de la imagen.</summary>
+    [JsonPropertyName("fondos")] public Dictionary<string, string>? Fondos { get; set; }
+
     public string Nombre(string id) => string.IsNullOrWhiteSpace(Titulo) ? id : Titulo!;
 
     public bool SeActivaCon(string proceso) =>
         ActivarCon is not null && ActivarCon.Any(p => string.Equals(Reglas.NormalizarPrograma(p), Reglas.NormalizarPrograma(proceso), StringComparison.OrdinalIgnoreCase));
+}
+
+/// <summary>Buscar versiones nuevas en GitHub Releases.</summary>
+public sealed class AjustesActualizaciones
+{
+    [JsonPropertyName("automatico")] public bool Automatico { get; set; } = true;
+
+    /// <summary>Repositorio público de donde se descargan: «usuario/repositorio».</summary>
+    [JsonPropertyName("repositorio")] public string Repositorio { get; set; } = "ZhalosJSJ/juego-secreto";
 }
 
 /// <summary>Mientras se mantiene Espacio sobre un widget (el Gran Sabio), los demás programas suenan más bajo.</summary>
@@ -349,6 +378,12 @@ public sealed class Estado
 
     /// <summary>El escritorio activo; null = libre.</summary>
     [JsonPropertyName("escritorio")] public string? Escritorio { get; set; }
+
+    /// <summary>Última vez que se buscaron actualizaciones (UTC).</summary>
+    [JsonPropertyName("ultimaBusqueda")] public DateTime? UltimaBusqueda { get; set; }
+
+    /// <summary>Fondos de pantalla que había antes de que un escritorio los cambiara: id de monitor → ruta.</summary>
+    [JsonPropertyName("fondosOriginales")] public Dictionary<string, string>? FondosOriginales { get; set; }
 }
 
 /// <summary>Posición elegida por el usuario, relativa al área de trabajo de la pantalla del widget.</summary>
@@ -455,7 +490,11 @@ public sealed class WidgetEnEscritorioConverter : JsonConverter<WidgetEnEscritor
                 var datos = JsonSerializer.Deserialize<Datos>(ref lector, opciones) ?? new Datos();
                 return new WidgetEnEscritorio
                 {
-                    Visible = datos.Visible, Ancho = datos.Ancho, Alto = datos.Alto, Lado = datos.Lado, Pantalla = datos.Pantalla,
+                    Visible = datos.Visible,
+                    Ancho = datos.Ancho,
+                    Alto = datos.Alto,
+                    Lado = datos.Lado,
+                    Pantalla = datos.Pantalla,
                 };
             default:
                 throw new JsonException("Un widget de un escritorio es true, false o un objeto con su posición.");
@@ -469,7 +508,11 @@ public sealed class WidgetEnEscritorioConverter : JsonConverter<WidgetEnEscritor
         else
             JsonSerializer.Serialize(escritor, new Datos
             {
-                Visible = valor.Visible, Ancho = valor.Ancho, Alto = valor.Alto, Lado = valor.Lado, Pantalla = valor.Pantalla,
+                Visible = valor.Visible,
+                Ancho = valor.Ancho,
+                Alto = valor.Alto,
+                Lado = valor.Lado,
+                Pantalla = valor.Pantalla,
             }, opciones);
     }
 }

@@ -5,15 +5,13 @@
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWindowsForms>true</UseWindowsForms>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>escritorio.ico</ApplicationIcon>
     <AssemblyName>Escritorio</AssemblyName>
     <RootNamespace>Escritorio</RootNamespace>
     <Product>Escritorio</Product>
     <Description>Widgets para el escritorio de Windows 11</Description>
-    <Version>0.6.0</Version>
+    <Version>0.7.0</Version>
 
     <!-- Permite compilar desde Linux o macOS; la app corre solo en Windows. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

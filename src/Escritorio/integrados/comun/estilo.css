@@ -1,0 +1,94 @@
+/* Sistema de estilos de los widgets de Escritorio.
+   Lo usan los widgets incluidos y puede usarlo cualquier widget propio:
+     <link rel="stylesheet" href="https://app.escritorio/comun/estilo.css">
+   El tema lo pone comun/puente.js en <html data-tema="oscuro|claro|auto">. */
+
+:root {
+  color-scheme: dark;
+  --fondo: #0b1220;
+  --panel: #111b2e;
+  --borde: #22304a;
+  --pista: #1a2740;
+  --tinta: #d9e8ff;
+  --tenue: #8fa6c8;
+  --acento: #86e6ff;
+  --sobre-acento: #06101c;
+  --bien: #6ef0be;
+  --medio: #ffc46b;
+  --alto: #ff8a98;
+  --radio: 10px;
+  --fuente: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --fuente-titulo: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --fuente-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+
+:root[data-tema="claro"] {
+  color-scheme: light;
+  --fondo: #f4f7fb;
+  --panel: #ffffff;
+  --borde: #d6dfeb;
+  --pista: #e3e9f2;
+  --tinta: #16233a;
+  --tenue: #5b6b85;
+  --acento: #0b7fa8;
+  --sobre-acento: #ffffff;
+  --bien: #1f9d6a;
+  --medio: #c47a00;
+  --alto: #d8415a;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-tema="auto"] {
+    color-scheme: light;
+    --fondo: #f4f7fb;
+    --panel: #ffffff;
+    --borde: #d6dfeb;
+    --pista: #e3e9f2;
+    --tinta: #16233a;
+    --tenue: #5b6b85;
+    --acento: #0b7fa8;
+    --sobre-acento: #ffffff;
+    --bien: #1f9d6a;
+    --medio: #c47a00;
+    --alto: #d8415a;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--fondo);
+  color: var(--tinta);
+  font: 13px/1.4 var(--fuente);
+  cursor: default;
+  user-select: none;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:disabled { opacity: .35; cursor: default; }
+svg { display: block; fill: currentColor; }
+::selection { background: var(--acento); color: var(--sobre-acento); }
+
+/* ——— Texto ——— */
+.encabezado { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+.tenue { color: var(--tenue); }
+.valor { font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; }
+.recortado { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vacio { color: var(--tenue); text-align: center; margin: 8px 0; }
+
+/* ——— Barra de nivel: <div class="barra"><i></i></div>, con .medio o .alto en el contenedor ——— */
+.barra { height: 4px; border-radius: 2px; background: var(--pista); overflow: hidden; }
+.barra i { display: block; height: 100%; width: 0; border-radius: 2px; background: var(--bien); transition: width .5s, background .5s; }
+.medio .barra i { background: var(--medio); }
+.alto .barra i { background: var(--alto); }
+.alto .valor { color: var(--alto); }
+.sin-dato .valor { color: var(--tenue); font-weight: 400; }
+
+/* ——— Componentes chicos ——— */
+.insignia { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--pista); color: var(--tenue); white-space: nowrap; }
+.boton { font: inherit; color: var(--tinta); background: var(--pista); border: 1px solid var(--borde); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.boton:hover { filter: brightness(1.15); }
+.boton.primario { background: var(--acento); color: var(--sobre-acento); border-color: transparent; font-weight: 600; }
+.boton.peligro { color: var(--alto); }
+.boton.chico { padding: 2px 7px; font-size: 12px; }
+input[type=range] { accent-color: var(--acento); }
