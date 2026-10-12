@@ -121,10 +121,23 @@
           campo('Pantalla de los widgets', selector(opcionesPantallas(), config.pantalla, v => config.pantalla = v ?? 'secundaria')),
           campo('Tema de los widgets', selector([{ valor: 'oscuro', texto: 'Oscuro' }, { valor: 'claro', texto: 'Claro' }, { valor: 'auto', texto: 'Como Windows' }], config.tema || 'oscuro', v => config.tema = v ?? 'oscuro')),
           marca('Iniciar con Windows', datos.inicioAutomatico, v => { datos.inicioAutomatico = v; enviar({ inicioAutomatico: v }); }),
+          marca('Acceso directo en el escritorio de Windows', datos.accesoDirecto, v => { datos.accesoDirecto = v; enviar({ accesoDirecto: v }); }),
           marca('Acomodar las ventanas nuevas según las reglas', config.organizar.activo, v => config.organizar.activo = v),
           marca('Buscar versiones nuevas una vez al día', config.actualizaciones.automatico !== false, v => config.actualizaciones.automatico = v),
         ),
         el('p', { class: 'nota' }, datos.instalado ? `Instalado · versión ${datos.version}` : `Sin instalar (se ejecuta desde donde está) · versión ${datos.version}`),
+      ));
+      s.append(el('h3', {}, 'Reproductor y navegadores'));
+      const navegadores = datos.navegadores || [];
+      s.append(el('div', { class: 'tarjeta' },
+        el('p', { class: 'nota' }, 'Para que lo que suena en un navegador (YouTube, por ejemplo) aparezca en el reproductor, el navegador tiene que publicarlo en los controles multimedia de Windows. Brave trae esa opción apagada; aquí se activa (con el navegador cerrado).'),
+        navegadores.length === 0 ? el('p', { class: 'vacio' }, 'No se encontró ningún navegador basado en Chromium.') : null,
+        ...navegadores.map(n => el('div', { class: 'fila' },
+          el('span', { class: 'titulo' }, n.nombre),
+          el('span', { class: 'insignia' }, { habilitado: 'Controles multimedia activos', deshabilitado: 'Controles multimedia desactivados', 'por-defecto': 'Opción sin fijar' }[n.estado] || n.estado),
+          n.abierto ? el('span', { class: 'insignia' }, 'Abierto ahora') : null,
+          el('button', { class: 'boton', disabled: n.estado === 'habilitado', onclick: () => { estado(`Activando en ${n.nombre}…`); enviar({ navegador: { habilitar: n.id } }); } }, n.estado === 'habilitado' ? 'Activo' : 'Activar'),
+        )),
       ));
       s.append(el('h3', {}, 'Atenuar al hablar'));
       s.append(el('div', { class: 'tarjeta' },
@@ -326,6 +339,8 @@
       } else if (d.tipo === 'guardado') {
         estado(d.ok ? 'Guardado y aplicado.' : `No se guardó: ${d.error}`, d.ok ? 'ok' : 'error');
         if (d.ok) enviar({ pedir: 'ajustes' });
+      } else if (d.tipo === 'navegador') {
+        estado(d.mensaje, d.ok ? 'ok' : 'error');
       }
     });
     enviar({ pedir: 'ajustes' });

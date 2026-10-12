@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.7.2
+
+- Al arrancar por primera vez ofrece crear un acceso directo en el escritorio de Windows; también desde la bandeja y desde Configuración → General. Al instalar o actualizar, el acceso pasa a apuntar a la copia instalada; al desinstalar se quita.
+- Reproductor con navegadores: Configuración → General muestra los navegadores Chromium del equipo y activa en ellos (con el navegador cerrado) la opción «Hardware Media Key Handling», que Brave trae apagada y sin la cual lo que suena en el navegador no llega a los controles multimedia de Windows ni al reproductor.
+
 ## 0.7.1
 
 - Mezclador: las filas de los programas conservaban una clave en la primera lectura y otra en las siguientes, y además se reordenaban al sonar o callarse; el deslizador se «soltaba» al arrastrarlo. Ahora la clave es estable, el orden es por nombre y nada se mueve mientras se arrastra.

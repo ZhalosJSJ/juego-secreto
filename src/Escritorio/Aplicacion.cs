@@ -94,6 +94,34 @@ internal sealed class Aplicacion : ApplicationContext
         Registro.Info($"Escritorio {Instalacion.Version} iniciado");
         if (versionAnterior is not null)
             Avisar($"Escritorio se actualizó a la versión {Instalacion.Version} y quitó la anterior ({versionAnterior}).");
+        else if (!Instalacion.ExisteAccesoEscritorio && !Estado.AccesoDirectoPreguntado)
+            comandos.BeginInvoke(PreguntarAccesoDirecto);
+    }
+
+    /// <summary>Una sola vez: ofrece el acceso directo en el escritorio de Windows.</summary>
+    void PreguntarAccesoDirecto()
+    {
+        Estado.AccesoDirectoPreguntado = true;
+        GuardarEstado();
+        var respuesta = MessageBox.Show(
+            "¿Crear un acceso directo a Escritorio en el escritorio de Windows?\n\n(Se puede crear después desde el ícono de la bandeja.)",
+            "Escritorio", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (respuesta == DialogResult.Yes)
+            CrearAccesoDirecto();
+    }
+
+    void CrearAccesoDirecto()
+    {
+        try
+        {
+            Instalacion.CrearAccesoEscritorio();
+            Avisar("Acceso directo creado en el escritorio.");
+        }
+        catch (Exception error)
+        {
+            Registro.Error("No se pudo crear el acceso directo en el escritorio", error);
+            Avisar("No se pudo crear el acceso directo. El detalle quedó en el registro.");
+        }
     }
 
     // --- Configuración y estado ---
@@ -470,6 +498,34 @@ internal sealed class Aplicacion : ApplicationContext
             if ((inicio.ValueKind == JsonValueKind.True) != Instalacion.InicioAutomatico)
                 Instalacion.AlternarInicioAutomatico();
         }
+        if (mensaje.TryGetProperty("accesoDirecto", out var acceso) && acceso.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            try
+            {
+                if (acceso.ValueKind == JsonValueKind.True)
+                    Instalacion.CrearAccesoEscritorio();
+                else
+                    Instalacion.QuitarAccesoEscritorio();
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+            {
+                Registro.Error("No se pudo cambiar el acceso directo del escritorio", error);
+            }
+        }
+        if (mensaje.TryGetProperty("navegador", out var navegador) && navegador.ValueKind == JsonValueKind.Object && Texto(navegador, "habilitar") is { } idNavegador)
+        {
+            try
+            {
+                var habilitado = Navegadores.Habilitar(idNavegador);
+                ventana.Enviar(JsonSerializer.Serialize(new { tipo = "navegador", ok = true, mensaje = $"Listo. Al abrir {habilitado.Nombre}, lo que suene ahí aparecerá en el reproductor." }));
+            }
+            catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException or InvalidOperationException or InvalidDataException or JsonException)
+            {
+                Registro.Error($"No se pudo habilitar los controles multimedia en «{idNavegador}»", error);
+                ventana.Enviar(JsonSerializer.Serialize(new { tipo = "navegador", ok = false, mensaje = error.Message }));
+            }
+            EnviarAjustes(ventana);
+        }
         if (mensaje.TryGetProperty("volumen", out var volumen) && volumen.ValueKind == JsonValueKind.Object && Texto(volumen, "app") is { } app1)
         {
             mezclador.Volumen(app1, Numero(volumen, "nivel"));
@@ -555,6 +611,8 @@ internal sealed class Aplicacion : ApplicationContext
             config = Config,
             pantallas = pantallas.Select((p, i) => new { valor = Geometria.Describir(p, pantallas), texto = $"Pantalla {i + 1}" + (p.Principal ? " (principal)" : "") }),
             inicioAutomatico = Instalacion.InicioAutomatico,
+            accesoDirecto = Instalacion.ExisteAccesoEscritorio,
+            navegadores = Navegadores.Instalados().Select(n => new { id = n.Id, nombre = n.Nombre, estado = n.Estado, abierto = n.Abierto }),
             instalado = Instalacion.EstaInstalado,
             version = Instalacion.Version,
             incluidos = Config.PorDefecto().Widgets.Where(w => w.Value.Integrado is not null).Select(w => new { id = w.Key, integrado = w.Value.Integrado, titulo = w.Value.Titulo, plantilla = w.Value }),
@@ -761,6 +819,8 @@ internal sealed class Aplicacion : ApplicationContext
         });
         if (!Instalacion.EstaInstalado)
             menu.Items.Add("Instalar en este equipo", null, (_, _) => Instalar());
+        if (!Instalacion.ExisteAccesoEscritorio)
+            menu.Items.Add("Crear acceso directo en el escritorio", null, (_, _) => CrearAccesoDirecto());
         menu.Items.Add("Buscar actualizaciones", null, (_, _) => _ = actualizaciones.Revisar(manual: true));
         menu.Items.Add("Abrir config.json", null, (_, _) => Abrir(Rutas.Config));
         menu.Items.Add("Ver registro", null, (_, _) => Abrir(Rutas.Registro));

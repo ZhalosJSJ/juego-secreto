@@ -29,6 +29,18 @@ internal static class Instalacion
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Escritorio");
     public static readonly string Exe = Path.Combine(Carpeta, "Escritorio.exe");
     static readonly string AccesoMenu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Escritorio.lnk");
+    static readonly string AccesoEscritorio = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Escritorio.lnk");
+
+    public static bool ExisteAccesoEscritorio => File.Exists(AccesoEscritorio);
+
+    /// <summary>Acceso directo en el escritorio de Windows, apuntando a la copia instalada si la hay.</summary>
+    public static void CrearAccesoEscritorio() => CrearAcceso(AccesoEscritorio, File.Exists(Exe) ? Exe : Actual);
+
+    public static void QuitarAccesoEscritorio()
+    {
+        if (ExisteAccesoEscritorio)
+            File.Delete(AccesoEscritorio);
+    }
 
     static string Actual => Environment.ProcessPath ?? Application.ExecutablePath;
 
@@ -116,6 +128,9 @@ internal static class Instalacion
     static void Registrar()
     {
         CrearAcceso(AccesoMenu, Exe);
+        // Si ya había un acceso en el escritorio, que apunte a la copia instalada.
+        if (ExisteAccesoEscritorio)
+            CrearAcceso(AccesoEscritorio, Exe);
         using (var clave = Registry.CurrentUser.CreateSubKey(ClaveDesinstalar))
         {
             clave.SetValue("DisplayName", Nombre);
@@ -289,6 +304,7 @@ internal static class Instalacion
         Registry.CurrentUser.DeleteSubKeyTree(ClaveDesinstalar, throwOnMissingSubKey: false);
         if (File.Exists(AccesoMenu))
             File.Delete(AccesoMenu);
+        QuitarAccesoEscritorio();
         MessageBox.Show($"Escritorio se desinstaló.\n\nSu configuración quedó en {Rutas.Datos}, por si lo vuelve a instalar. Puede borrar esa carpeta.",
             Nombre, MessageBoxButtons.OK, MessageBoxIcon.Information);
         // El .exe no se puede borrar mientras corre: un cmd invisible lo borra un par de segundos después de cerrarse.

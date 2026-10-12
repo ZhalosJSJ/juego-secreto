@@ -149,7 +149,7 @@
       <div class="fuente"><span id="fuente"></span><select id="sesiones" hidden></select></div>
       <div class="titulo" id="titulo"><span>Nada en reproducción</span></div>
       <div class="artista" id="artista">Abra Spotify, YouTube o cualquier reproductor</div>
-      <div class="album" id="album"></div>
+      <div class="album" id="album">¿Brave no aparece? Configuración → General</div>
     </div>
     <div class="linea">
       <span id="t-pos">0:00</span>
@@ -208,7 +208,7 @@
       const hay = d.estado !== 'nada';
       $('titulo').firstElementChild.textContent = hay ? (d.titulo || 'Sin título') : 'Nada en reproducción';
       $('artista').textContent = hay ? d.artista : 'Abra Spotify, YouTube o cualquier reproductor';
-      $('album').textContent = hay ? (d.album || '') : '';
+      $('album').textContent = hay ? (d.album || '') : '¿Brave no aparece? Configuración → General';
       $('fuente').textContent = hay ? d.fuente : '';
       ajustarTitulo();
       pintarSesiones(d.sesiones || []);

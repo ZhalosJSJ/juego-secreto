@@ -102,6 +102,12 @@ Qué mirar: ¿aparecieron en la pantalla correcta? ¿Tienen el tamaño esperado 
 5. Reloj: en Configuración → Widgets → Reloj active «Segundos» y «12 horas» y guarde.
 6. Bandeja → **Buscar actualizaciones**: si no hay Releases publicadas, debe decir «Ya tiene la última versión» (o avisar que no pudo consultar GitHub si no hay conexión). Cuando exista una Release más nueva, debe ofrecer instalarla y reiniciarse sola.
 
+## 13. Acceso directo y navegadores
+
+1. Borre `Escritorio.lnk` del escritorio de Windows (si existe) y en `%LOCALAPPDATA%\Escritorio\estado.json` quite `"accesoDirectoPreguntado"`. Abra la app: debe preguntar si crear el acceso directo; diga que sí y compruebe que abre la app.
+2. Con Brave cerrado del todo, Configuración → General → *Reproductor y navegadores* → **Activar** junto a Brave: debe decir «Listo…» y el estado pasar a «Controles multimedia activos». Abra Brave, reproduzca un video de YouTube: debe aparecer en el reproductor (y en los controles multimedia de Windows al tocar el volumen).
+3. Con Brave abierto, pulse Activar: debe pedir cerrarlo, sin tocar nada.
+
 ## Si algo falla
 
 - Errores: `%LOCALAPPDATA%\Escritorio\registro.log`.

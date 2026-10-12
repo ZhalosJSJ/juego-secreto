@@ -14,6 +14,7 @@
     <Compile Include="../../src/Escritorio/Medios.cs" Link="App/Medios.cs" />
     <Compile Include="../../src/Escritorio/Versiones.cs" Link="App/Versiones.cs" />
     <Compile Include="../../src/Escritorio/Teclas.cs" Link="App/Teclas.cs" />
+    <Compile Include="../../src/Escritorio/Navegadores.cs" Link="App/Navegadores.cs" />
   </ItemGroup>
 
   <ItemGroup>

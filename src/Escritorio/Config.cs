@@ -382,6 +382,9 @@ public sealed class Estado
     /// <summary>Última vez que se buscaron actualizaciones (UTC).</summary>
     [JsonPropertyName("ultimaBusqueda")] public DateTime? UltimaBusqueda { get; set; }
 
+    /// <summary>Ya se ofreció crear el acceso directo en el escritorio (se pregunta una sola vez).</summary>
+    [JsonPropertyName("accesoDirectoPreguntado")] public bool AccesoDirectoPreguntado { get; set; }
+
     /// <summary>Fondos de pantalla que había antes de que un escritorio los cambiara: id de monitor → ruta.</summary>
     [JsonPropertyName("fondosOriginales")] public Dictionary<string, string>? FondosOriginales { get; set; }
 }

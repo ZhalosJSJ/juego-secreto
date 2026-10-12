@@ -16,7 +16,7 @@ La primera vez, Windows puede mostrar «Windows protegió su PC», porque el .ex
 
 1. Abra `Escritorio.exe`. Aparece un ícono en la bandeja, junto al reloj.
 2. Clic derecho en el ícono → **Instalar en este equipo**. Se copia a `%LOCALAPPDATA%\Programs\Escritorio`, aparece en el menú Inicio y en **Configuración → Aplicaciones** (desde ahí se desinstala). No pide permisos de administrador.
-3. Si quiere que arranque solo: **Iniciar con Windows**.
+3. Si quiere que arranque solo: **Iniciar con Windows**. La primera vez la app ofrece crear un **acceso directo en el escritorio** de Windows; también se crea desde la bandeja o desde Configuración → General.
 
 **Actualizar:** abra el `Escritorio.exe` nuevo, nada más. Él cierra la copia que esté abierta, reemplaza la instalada, borra lo que sobre de la versión anterior y se vuelve a abrir desde la instalación (avisa con un globo). Si abre por error un `.exe` más viejo que el instalado, no lo degrada: abre el instalado. Para probar una compilación sin tocar la instalada: `Escritorio.exe --sin-actualizar`.
 
@@ -196,6 +196,8 @@ El widget `rendimiento` muestra el uso del procesador, la memoria y, con tarjeta
 ## Reproductor y volúmenes
 
 El widget muestra **lo que se esté escuchando**, venga de donde venga: Spotify, YouTube en el navegador, el Reproductor multimedia de Windows… Usa el mismo control que las teclas de reproducción del teclado, así que no hay que configurar nada por app. Trae carátula, progreso (clic en la barra para saltar), anterior/pausa/siguiente, y las teclas **Espacio**, **←** y **→** cuando el widget tiene el foco. Si varias apps suenan a la vez, aparece un selector para elegir cuál mostrar.
+
+**Si lo que suena en Brave (u otro navegador) no aparece:** el navegador tiene que publicarlo en los controles multimedia de Windows, y Brave trae esa opción («Hardware Media Key Handling») apagada. Cierre Brave del todo y, en Configuración → General → *Reproductor y navegadores*, pulse **Activar** junto a Brave: la app anota la opción en la configuración del navegador (deja una copia `Local State.escritorio.bak`). Es lo mismo que poner `brave://flags/#hardware-media-key-handling` en *Enabled*.
 
 Tiene **cinco diseños**; el botón ◐ del widget los va rotando y recuerda el último. También se fija en `config.json` con `"opciones": { "diseno": "vinilo" }`.
 
