@@ -81,6 +81,7 @@ Qué mirar: ¿aparecieron en la pantalla correcta? ¿Tienen el tamaño esperado 
 3. Reproduzca un video de YouTube en el navegador con Spotify en pausa: debe aparecer un selector con las dos apps; elija cada una.
 4. Pulse ◐ cinco veces: tarjeta → vinilo (el disco gira) → mínimo → portada (carátula de fondo) → neón (ecualizador) → tarjeta. Cierre y abra la app: conserva el último.
 5. Pulse 🔊: lista «General» y los programas con sonido, con ícono y medidor moviéndose. Baje el volumen de Chrome o Discord: debe cambiar solo ese programa (compárelo con el mezclador de Windows). Pruebe silenciar y volver a activar. Esc o ✕ cierra el panel.
+   - **Memoria**: deje el panel abierto con música sonando una hora o más. En el Administrador de tareas (Rendimiento → Memoria), «Bloque paginado» y «Bloque no paginado» deben quedar estables (menos de 1–2 GB) y Escritorio debe usar poca CPU. Cambie la salida de sonido (por ejemplo, a auriculares Bluetooth) con el panel abierto: la lista debe seguir funcionando.
 6. En `config.json`, ponga `"opciones": { "diseno": "portada" }` al reproductor, con `"ancho": 300, "alto": 300`, y **Recargar**: debe abrir con ese diseño.
 
 ## 11. Configuración, menú Widgets y migración

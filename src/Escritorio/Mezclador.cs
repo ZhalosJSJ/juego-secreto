@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -9,11 +10,16 @@ namespace Escritorio;
 /// El volumen de cada programa y el general, como el mezclador de Windows, con la interfaz de
 /// audio del sistema (Core Audio) llamada directamente por COM: sin paquetes externos.
 /// Las sesiones se agrupan por programa (Chrome abre varias) y el volumen se aplica a todas.
+/// Todo Core Audio vive en un hilo propio: la interfaz solo encola pedidos y nunca espera al audio,
+/// y cada objeto COM se libera en el mismo hilo que lo creó, en cuanto deja de servir. Si quedan
+/// vivos, Windows les sigue mandando notificaciones de audio y, si no se alcanzan a procesar, las
+/// acumula en la memoria del núcleo (pool EtwD/Etwr) hasta llenar la RAM.
 /// </summary>
 internal sealed class Mezclador : IDisposable
 {
     const string General = "*";
     const string Sistema = "sistema";
+    // Cada cuánto se revisa si cambió la salida predeterminada (auriculares, etc.); solo si cambió se rehace todo.
     static readonly TimeSpan VidaDelDispositivo = TimeSpan.FromSeconds(5);
 
     sealed class Programa
@@ -29,16 +35,21 @@ internal sealed class Mezclador : IDisposable
     }
 
     readonly Aplicacion app;
+    readonly BlockingCollection<Action> trabajos = new();
+    readonly Thread hilo;
+    int lecturaEnCola;  // 1 si ya hay una lectura esperando: los pedidos del widget (cada 300 ms) no se apilan
     readonly Dictionary<string, string?> iconos = new(StringComparer.OrdinalIgnoreCase);
     // Por número de proceso: la clave se guarda también, para que no cambie entre una lectura y la siguiente.
     readonly Dictionary<int, (string Clave, string Nombre, string? Icono)> procesos = new();
     DateTime procesosDesde;
     static readonly TimeSpan VidaDeProcesos = TimeSpan.FromSeconds(60);
+    CoreAudio.IMMDeviceEnumerator? enumeradorDispositivos;  // uno solo mientras dure el hilo
     CoreAudio.IMMDevice? dispositivo;
+    string? idDispositivo;
     CoreAudio.IAudioSessionManager2? gestor;
     CoreAudio.IAudioEndpointVolume? general;
     CoreAudio.IAudioMeterInformation? medidorGeneral;
-    DateTime dispositivoDesde;
+    DateTime dispositivoRevisado;
     Guid sinContexto = Guid.Empty;
     Dictionary<string, float>? atenuados;  // niveles originales mientras se atenúa
 
@@ -47,28 +58,99 @@ internal sealed class Mezclador : IDisposable
 
     public bool Atenuando => atenuados is not null;
 
-    public Mezclador(Aplicacion app) => this.app = app;
+    public Mezclador(Aplicacion app)
+    {
+        this.app = app;
+        hilo = new Thread(Atender) { IsBackground = true, Name = "Mezclador" };
+        hilo.SetApartmentState(ApartmentState.MTA);
+        hilo.Start();
+    }
 
-    public void Dispose() => Soltar();
+    /// <summary>Termina lo que quede en cola (por ejemplo, devolver los volúmenes atenuados) y libera todo.</summary>
+    public void Dispose()
+    {
+        trabajos.CompleteAdding();
+        if (hilo.Join(TimeSpan.FromSeconds(2)))
+            trabajos.Dispose();
+        else
+            Registro.Info("El hilo del mezclador no terminó a tiempo al cerrar");
+    }
+
+    // --- Lo que pide la interfaz: se encola y vuelve enseguida ---
 
     /// <summary>Manda al widget el estado actual de todos los volúmenes (o el error, para que lo muestre).</summary>
     public void Enviar()
     {
+        // Si ya hay una lectura esperando, esa sirve: una lectura lenta no deja pedidos acumulados.
+        if (Interlocked.Exchange(ref lecturaEnCola, 1) == 0)
+            EnHilo(() =>
+            {
+                Volatile.Write(ref lecturaEnCola, 0);
+                EnviarAhora();
+            });
+    }
+
+    /// <summary>Cambia el volumen (0 a 1) de un programa, o del general con «*».</summary>
+    public void Volumen(string clave, double nivel) => EnHilo(() => CambiarVolumen(clave, nivel));
+
+    public void Silencio(string clave, bool silencio) => EnHilo(() => CambiarSilencio(clave, silencio));
+
+    /// <summary>Baja los demás programas a una fracción de su volumen (0.25 = a un cuarto), recordando el original.</summary>
+    public void Atenuar(double fraccion) => EnHilo(() => AtenuarAhora(fraccion));
+
+    /// <summary>Devuelve a cada programa el volumen que tenía antes de atenuar.</summary>
+    public void Restaurar() => EnHilo(RestaurarAhora);
+
+    void EnHilo(Action trabajo)
+    {
         try
         {
-            app.EnviarA("reproductor", JsonSerializer.Serialize(Leer()));
+            trabajos.Add(trabajo);
+        }
+        catch (InvalidOperationException)
+        {
+            // La app se está cerrando: ya no se toca el audio.
+        }
+    }
+
+    void Atender()
+    {
+        foreach (var trabajo in trabajos.GetConsumingEnumerable())
+        {
+            try
+            {
+                trabajo();
+            }
+            catch (Exception error)
+            {
+                Registro.Error("Error en el hilo del mezclador", error);
+            }
+        }
+        Soltar();
+        Liberar(enumeradorDispositivos);
+        enumeradorDispositivos = null;
+    }
+
+    // --- En el hilo del mezclador ---
+
+    void EnviarAhora()
+    {
+        string json;
+        try
+        {
+            json = JsonSerializer.Serialize(Leer());
         }
         catch (Exception error)
         {
             Registro.Error("No se pudo leer el mezclador", error);
             Soltar();
             var detalle = error is InvalidOperationException ? error.Message : $"{error.GetType().Name}: {error.Message}";
-            app.EnviarA("reproductor", JsonSerializer.Serialize(new { tipo = "mezclador", error = detalle }));
+            json = JsonSerializer.Serialize(new { tipo = "mezclador", error = detalle });
         }
+        app.EnUI(() => app.EnviarA("reproductor", json));
     }
 
-    /// <summary>Cambia el volumen (0 a 1) de un programa, o del general con «*».</summary>
-    public void Volumen(string clave, double nivel)
+    void CambiarVolumen(string clave, double nivel)
     {
         float valor = Medios.Nivel(nivel);
         try
@@ -76,8 +158,7 @@ internal sealed class Mezclador : IDisposable
             if (clave == General)
                 Preparar().general?.SetMasterVolumeLevelScalar(valor, ref sinContexto);
             else
-                foreach (var sesion in SesionesDe(clave))
-                    ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(valor, ref sinContexto);
+                ConSesionesDe(clave, volumen => volumen.SetMasterVolume(valor, ref sinContexto));
         }
         catch (Exception error)
         {
@@ -86,15 +167,14 @@ internal sealed class Mezclador : IDisposable
         }
     }
 
-    public void Silencio(string clave, bool silencio)
+    void CambiarSilencio(string clave, bool silencio)
     {
         try
         {
             if (clave == General)
                 Preparar().general?.SetMute(silencio, ref sinContexto);
             else
-                foreach (var sesion in SesionesDe(clave))
-                    ((CoreAudio.ISimpleAudioVolume)sesion).SetMute(silencio, ref sinContexto);
+                ConSesionesDe(clave, volumen => volumen.SetMute(silencio, ref sinContexto));
         }
         catch (Exception error)
         {
@@ -103,22 +183,29 @@ internal sealed class Mezclador : IDisposable
         }
     }
 
-    /// <summary>Baja los demás programas a una fracción de su volumen (0.25 = a un cuarto), recordando el original.</summary>
-    public void Atenuar(double fraccion)
+    void AtenuarAhora(double fraccion)
     {
         if (atenuados is not null)
             return;
         try
         {
             var originales = new Dictionary<string, float>();
-            foreach (var programa in Programas(Preparar().gestor!).Values)
+            var programas = Programas(Preparar().gestor!);
+            try
             {
-                if (programa.Clave == Sistema || programa.Clave == ClavePropia)
-                    continue;
-                originales[programa.Clave] = programa.Nivel;
-                float nivel = Medios.Nivel(programa.Nivel * fraccion);
-                foreach (var sesion in programa.Sesiones)
-                    ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(nivel, ref sinContexto);
+                foreach (var programa in programas.Values)
+                {
+                    if (programa.Clave == Sistema || programa.Clave == ClavePropia)
+                        continue;
+                    originales[programa.Clave] = programa.Nivel;
+                    float nivel = Medios.Nivel(programa.Nivel * fraccion);
+                    foreach (var sesion in programa.Sesiones)
+                        ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(nivel, ref sinContexto);
+                }
+            }
+            finally
+            {
+                Liberar(programas);
             }
             atenuados = originales;
         }
@@ -129,8 +216,7 @@ internal sealed class Mezclador : IDisposable
         }
     }
 
-    /// <summary>Devuelve a cada programa el volumen que tenía antes de atenuar.</summary>
-    public void Restaurar()
+    void RestaurarAhora()
     {
         if (atenuados is null)
             return;
@@ -139,10 +225,17 @@ internal sealed class Mezclador : IDisposable
         try
         {
             var programas = Programas(Preparar().gestor!);
-            foreach (var (clave, nivel) in originales)
-                if (programas.TryGetValue(clave, out var programa))
-                    foreach (var sesion in programa.Sesiones)
-                        ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(nivel, ref sinContexto);
+            try
+            {
+                foreach (var (clave, nivel) in originales)
+                    if (programas.TryGetValue(clave, out var programa))
+                        foreach (var sesion in programa.Sesiones)
+                            ((CoreAudio.ISimpleAudioVolume)sesion).SetMasterVolume(nivel, ref sinContexto);
+            }
+            finally
+            {
+                Liberar(programas);
+            }
         }
         catch (Exception error)
         {
@@ -173,72 +266,119 @@ internal sealed class Mezclador : IDisposable
             general = new { nivel = nivelGeneral, silencio = silencioGeneral, pico = picoGeneral };
         }
         // Orden estable (los activos no saltan de lugar al sonar o callarse): por nombre, el sistema al final.
-        var programas = Programas(m.gestor!).Values
-            .OrderBy(p => p.Clave == Sistema)
-            .ThenBy(p => p.Nombre, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(p => p.Clave, StringComparer.OrdinalIgnoreCase)
-            .Select(p => new { clave = p.Clave, nombre = p.Nombre, icono = p.Icono, activo = p.Activo, nivel = p.Nivel, silencio = p.Silencio, pico = p.Pico })
-            .ToList();
-        return new
+        var leidos = Programas(m.gestor!);
+        try
         {
-            tipo = "mezclador",
-            general,   // null si el dispositivo no ofrece volumen general: el widget muestra solo los programas
-            programas,
-        };
+            var programas = leidos.Values
+                .OrderBy(p => p.Clave == Sistema)
+                .ThenBy(p => p.Nombre, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(p => p.Clave, StringComparer.OrdinalIgnoreCase)
+                .Select(p => new { clave = p.Clave, nombre = p.Nombre, icono = p.Icono, activo = p.Activo, nivel = p.Nivel, silencio = p.Silencio, pico = p.Pico })
+                .ToList();
+            return new
+            {
+                tipo = "mezclador",
+                general,   // null si el dispositivo no ofrece volumen general: el widget muestra solo los programas
+                programas,
+            };
+        }
+        finally
+        {
+            Liberar(leidos);
+        }
     }
 
-    IEnumerable<CoreAudio.IAudioSessionControl> SesionesDe(string clave) =>
-        Programas(Preparar().gestor!).TryGetValue(clave, out var programa) ? programa.Sesiones : [];
+    /// <summary>Hace algo con cada sesión de un programa y después suelta todas las sesiones leídas.</summary>
+    void ConSesionesDe(string clave, Action<CoreAudio.ISimpleAudioVolume> accion)
+    {
+        var programas = Programas(Preparar().gestor!);
+        try
+        {
+            if (programas.TryGetValue(clave, out var programa))
+                foreach (var sesion in programa.Sesiones)
+                    accion((CoreAudio.ISimpleAudioVolume)sesion);
+        }
+        finally
+        {
+            Liberar(programas);
+        }
+    }
 
-    /// <summary>Las sesiones de audio vivas, agrupadas por programa.</summary>
+    /// <summary>
+    /// Las sesiones de audio vivas, agrupadas por programa. Quien la llama debe soltarlas con
+    /// Liberar(programas) cuando termina.
+    /// </summary>
     Dictionary<string, Programa> Programas(CoreAudio.IAudioSessionManager2 gestor)
     {
         var resultado = new Dictionary<string, Programa>(StringComparer.OrdinalIgnoreCase);
         gestor.GetSessionEnumerator(out var enumerador);
-        enumerador.GetCount(out int cantidad);
-        for (int i = 0; i < cantidad; i++)
+        try
         {
-            // Una sesión que muere a mitad de la lectura no arruina las demás.
-            try
-            {
-                enumerador.GetSession(i, out var control);
-                control.GetState(out var estado);
-                if (estado == CoreAudio.AudioSessionState.Expired)
-                    continue;
-                var control2 = (CoreAudio.IAudioSessionControl2)control;
-                control2.GetProcessId(out uint pid);
-                bool esSistema = control2.IsSystemSoundsSession() == 0;
-                var (clave, nombre, icono) = esSistema || pid == 0 ? (Sistema, Medios.NombreDeFuente(Sistema), null) : DescribirProceso((int)pid);
-
-                if (!resultado.TryGetValue(clave, out var programa))
-                {
-                    programa = new Programa { Clave = clave, Nombre = nombre, Icono = icono };
-                    resultado[clave] = programa;
-                }
-                var volumen = (CoreAudio.ISimpleAudioVolume)control;
-                volumen.GetMasterVolume(out float nivel);
-                volumen.GetMute(out bool silencio);
-                float pico = 0;
-                try
-                {
-                    ((CoreAudio.IAudioMeterInformation)control).GetPeakValue(out pico);
-                }
-                catch (Exception error) when (error is InvalidCastException or COMException)
-                {
-                }
-                bool primera = programa.Sesiones.Count == 0;
-                programa.Sesiones.Add(control);
-                programa.Activo |= estado == CoreAudio.AudioSessionState.Active;
-                programa.Nivel = primera ? nivel : Math.Max(programa.Nivel, nivel);
-                programa.Silencio = primera ? silencio : programa.Silencio && silencio;
-                programa.Pico = Math.Max(programa.Pico, pico);
-            }
-            catch (Exception error) when (error is COMException or InvalidCastException)
-            {
-                continue;
-            }
+            enumerador.GetCount(out int cantidad);
+            for (int i = 0; i < cantidad; i++)
+                LeerSesion(enumerador, i, resultado);
+        }
+        catch
+        {
+            Liberar(resultado);
+            throw;
+        }
+        finally
+        {
+            Liberar(enumerador);
         }
         return resultado;
+    }
+
+    void LeerSesion(CoreAudio.IAudioSessionEnumerator enumerador, int indice, Dictionary<string, Programa> resultado)
+    {
+        CoreAudio.IAudioSessionControl? control = null;
+        bool guardada = false;
+        // Una sesión que muere a mitad de la lectura no arruina las demás.
+        try
+        {
+            enumerador.GetSession(indice, out control);
+            control.GetState(out var estado);
+            if (estado == CoreAudio.AudioSessionState.Expired)
+                return;
+            var control2 = (CoreAudio.IAudioSessionControl2)control;
+            control2.GetProcessId(out uint pid);
+            bool esSistema = control2.IsSystemSoundsSession() == 0;
+            var (clave, nombre, icono) = esSistema || pid == 0 ? (Sistema, Medios.NombreDeFuente(Sistema), null) : DescribirProceso((int)pid);
+
+            if (!resultado.TryGetValue(clave, out var programa))
+            {
+                programa = new Programa { Clave = clave, Nombre = nombre, Icono = icono };
+                resultado[clave] = programa;
+            }
+            var volumen = (CoreAudio.ISimpleAudioVolume)control;
+            volumen.GetMasterVolume(out float nivel);
+            volumen.GetMute(out bool silencio);
+            float pico = 0;
+            try
+            {
+                ((CoreAudio.IAudioMeterInformation)control).GetPeakValue(out pico);
+            }
+            catch (Exception error) when (error is InvalidCastException or COMException)
+            {
+            }
+            bool primera = programa.Sesiones.Count == 0;
+            programa.Sesiones.Add(control);
+            guardada = true;
+            programa.Activo |= estado == CoreAudio.AudioSessionState.Active;
+            programa.Nivel = primera ? nivel : Math.Max(programa.Nivel, nivel);
+            programa.Silencio = primera ? silencio : programa.Silencio && silencio;
+            programa.Pico = Math.Max(programa.Pico, pico);
+        }
+        catch (Exception error) when (error is COMException or InvalidCastException)
+        {
+        }
+        finally
+        {
+            // La que quedó en un programa la suelta quien pidió los programas; las demás, aquí.
+            if (!guardada)
+                Liberar(control);
+        }
     }
 
     (string Clave, string Nombre, string? Icono) DescribirProceso(int pid)
@@ -307,36 +447,51 @@ internal sealed class Mezclador : IDisposable
 
     // --- Dispositivo de salida ---
 
-    /// <summary>El dispositivo de salida predeterminado; se renueva cada pocos segundos por si cambia (auriculares, etc.).</summary>
+    /// <summary>
+    /// El dispositivo de salida predeterminado. Cada pocos segundos se revisa si cambió (auriculares, etc.);
+    /// si es el mismo, se siguen usando los objetos que ya hay en lugar de crear otros.
+    /// </summary>
     Mezclador Preparar()
     {
-        if (gestor is not null && DateTime.UtcNow - dispositivoDesde < VidaDelDispositivo)
+        if (gestor is not null && DateTime.UtcNow - dispositivoRevisado < VidaDelDispositivo)
             return this;
-        Soltar();
-        var enumerador = (CoreAudio.IMMDeviceEnumerator)new CoreAudio.MMDeviceEnumerator();
+        enumeradorDispositivos ??= (CoreAudio.IMMDeviceEnumerator)new CoreAudio.MMDeviceEnumerator();
+        CoreAudio.IMMDevice? predeterminado = null;
+        string id;
         try
         {
-            enumerador.GetDefaultAudioEndpoint(CoreAudio.EDataFlow.Render, CoreAudio.ERole.Multimedia, out dispositivo);
+            enumeradorDispositivos.GetDefaultAudioEndpoint(CoreAudio.EDataFlow.Render, CoreAudio.ERole.Multimedia, out predeterminado);
+            predeterminado.GetId(out id);
         }
         catch (COMException error)
         {
+            Liberar(predeterminado);
+            Soltar();
             throw new InvalidOperationException("No hay ningún dispositivo de salida de sonido.", error);
         }
+        dispositivoRevisado = DateTime.UtcNow;
+        if (gestor is not null && id == idDispositivo)
+        {
+            Liberar(predeterminado);
+            return this;
+        }
+        Soltar();
+        dispositivo = predeterminado;
+        idDispositivo = id;
         // Las sesiones son imprescindibles; el volumen general y el medidor, no: algunos dispositivos
         // (auriculares Bluetooth, salidas virtuales) no los ofrecen y Activate devuelve E_NOINTERFACE,
         // que .NET entrega como InvalidCastException sin más detalle.
         try
         {
-            gestor = (CoreAudio.IAudioSessionManager2)Activar(dispositivo!, typeof(CoreAudio.IAudioSessionManager2).GUID);
+            gestor = (CoreAudio.IAudioSessionManager2)Activar(predeterminado, typeof(CoreAudio.IAudioSessionManager2).GUID);
         }
         catch (Exception error) when (error is COMException or InvalidCastException or NotSupportedException)
         {
             Soltar();
             throw new InvalidOperationException("El dispositivo de salida predeterminado no permite leer sus sesiones de audio. Pruebe con otro dispositivo de salida.", error);
         }
-        general = Opcional<CoreAudio.IAudioEndpointVolume>(dispositivo!, "volumen general");
-        medidorGeneral = Opcional<CoreAudio.IAudioMeterInformation>(dispositivo!, "medidor de nivel");
-        dispositivoDesde = DateTime.UtcNow;
+        general = Opcional<CoreAudio.IAudioEndpointVolume>(predeterminado, "volumen general");
+        medidorGeneral = Opcional<CoreAudio.IAudioMeterInformation>(predeterminado, "medidor de nivel");
         return this;
     }
 
@@ -359,12 +514,35 @@ internal sealed class Mezclador : IDisposable
         }
     }
 
+    /// <summary>Suelta los objetos del dispositivo actual; el próximo pedido los vuelve a crear.</summary>
     void Soltar()
     {
-        gestor = null;
-        general = null;
+        Liberar(medidorGeneral);
+        Liberar(general);
+        Liberar(gestor);
+        Liberar(dispositivo);
         medidorGeneral = null;
+        general = null;
+        gestor = null;
         dispositivo = null;
+        idDispositivo = null;
+    }
+
+    static void Liberar(Dictionary<string, Programa> programas)
+    {
+        foreach (var programa in programas.Values)
+            foreach (var sesion in programa.Sesiones)
+                Liberar(sesion);
+    }
+
+    /// <summary>
+    /// Suelta un objeto COM ya mismo, sin esperar al recolector de basura: mientras viva, Windows le
+    /// sigue mandando notificaciones de audio.
+    /// </summary>
+    static void Liberar(object? objeto)
+    {
+        if (objeto is not null && Marshal.IsComObject(objeto))
+            Marshal.ReleaseComObject(objeto);
     }
 }
 
